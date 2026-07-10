@@ -1,0 +1,35 @@
+{
+  "rmse": 83.83570863766069,
+  "r2": 0.07414248951099445,
+  "mae": 60.744812370215804,
+  "window": 48,
+  "forecast_horizon": 24,
+  "features": [
+    "pm25",
+    "pm10",
+    "no2",
+    "o3",
+    "co",
+    "temperature",
+    "humidity",
+    "wind_speed",
+    "hour_sin",
+    "hour_cos",
+    "day_sin",
+    "day_cos",
+    "pm25_lag1",
+    "pm25_lag6",
+    "pm25_lag24",
+    "pm25_rolling6",
+    "pm25_rolling24"
+  ],
+  "n_samples_train": 47803,
+  "n_samples_test": 11951,
+  "data_sources": [
+    "city_hour.csv",
+    "delhi-weather-aqi-2025.csv",
+    "*_combined.csv",
+    "synthetic_augmentation"
+  ],
+  "trained_at": "2026-07-10T10:01:30.291279Z"
+}

@@ -1,0 +1,50 @@
+# ── Secrets & Environment Variables (NEVER commit these) ──────────────────────
+backend/.env
+frontend-next/.env.local
+frontend-next/.env*.local
+*.env
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── ML Model Artifacts (large binaries — store in cloud storage instead) ──────
+backend/*.h5
+backend/*.pkl
+backend/*.json
+!backend/model_metadata.json
+backend/*.keras
+
+# ── Next.js / Node ─────────────────────────────────────────────────────────────
+frontend-next/node_modules/
+frontend-next/.next/
+frontend-next/out/
+frontend-next/.vercel/
+node_modules/
+
+# ── IDE & OS ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+
+# ── Scratch / test files (keep test scripts but not generated data) ────────────
+backend/scratch/*.csv
+backend/scratch/*.json
