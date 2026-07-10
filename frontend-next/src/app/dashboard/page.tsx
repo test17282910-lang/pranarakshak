@@ -543,12 +543,10 @@ export default function Dashboard() {
             <div className="logo-orb"><div className="logo-orb-inner" /></div>
             <span className="logo-name">Pranarakshak</span>
           </Link>
-          {profile && (
-            <div className="topbar-status">
-              <span className="live-dot animate-pulse" />
-              {profile.name} · {profile.condition}
-            </div>
-          )}
+          <div className="topbar-status">
+            <span className="live-dot animate-pulse" />
+            Live · India · CPCB
+          </div>
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             {profile && (
               <>
