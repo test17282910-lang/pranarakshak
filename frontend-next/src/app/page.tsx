@@ -186,7 +186,7 @@ export default function Home() {
 
       <main className="page-wrap">
         {/* ── Hero Section ── */}
-        <section className="section" style={{ minHeight: "100svh", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center", paddingTop: "6rem", paddingBottom: "4rem" }}>
+        <section className="section" style={{ minHeight: "100svh", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "start", paddingTop: "8rem", paddingBottom: "4rem" }}>
           <div className="section-inner" style={{ width: "100%", maxWidth: "1200px", margin: "0 auto", display: "contents" }}>
             <div>
               {/* Left: Copy */}
