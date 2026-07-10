@@ -857,6 +857,70 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
         patient_name=patient_name
     )
 
+    # ── Send Alert if Risk is High or Critical ────────────────────────────────
+    if tier.lower() in ["high risk", "critical"] and user:
+        try:
+            from alerts import send_sms, send_email
+            
+            phone = user.get("phone")
+            email = user.get("email")
+            
+            # Send SMS if phone available
+            if phone:
+                sms_text = f"🚨 Pranarakshak Alert\n\n{message}\n\nTop precaution: {precautions[0]['text'] if precautions else 'Stay safe'}"
+                sms_status, sms_id = send_sms(phone, sms_text[:160])  # SMS limit
+                
+                # Log to database
+                await asyncio.to_thread(
+                    db.supabase.table("alerts_log").insert({
+                        "user_id": payload.user_id,
+                        "alert_tier": tier,
+                        "alert_message": message,
+                        "aqi_value": round(adjusted_aqi, 1),
+                        "channel": "sms",
+                        "recipient": phone,
+                        "status": sms_status,
+                        "provider_message_id": sms_id,
+                    }).execute
+                )
+            
+            # Send Email if email available
+            if email:
+                subject = f"🚨 AQI Alert: {tier}"
+                html_body = f"""
+<!DOCTYPE html>
+<html>
+<head><style>body{{font-family:Arial,sans-serif;}}h2{{color:#d32f2f;}}</style></head>
+<body>
+<h2>{tier} - AQI Alert</h2>
+<p><strong>{message}</strong></p>
+<h3>Precautions:</h3>
+<ul>
+{''.join(f"<li>{p['text']}</li>" for p in precautions[:5])}
+</ul>
+<p><a href="https://pranarakshak-six.vercel.app/dashboard?user_id={payload.user_id}">View Dashboard</a></p>
+</body>
+</html>
+"""
+                email_status, email_id = send_email(email, subject, html_body)
+                
+                # Log to database
+                await asyncio.to_thread(
+                    db.supabase.table("alerts_log").insert({
+                        "user_id": payload.user_id,
+                        "alert_tier": tier,
+                        "alert_message": message,
+                        "aqi_value": round(adjusted_aqi, 1),
+                        "channel": "email",
+                        "recipient": email,
+                        "status": email_status,
+                        "provider_message_id": email_id,
+                    }).execute
+                )
+        except Exception as e:
+            logger.error(f"Failed to send alert: {e}")
+            # Don't fail the prediction if alert fails
+
     source_label = quality_tier if quality_tier != "live" else fetch_source
     display_aqi_for_tier = live_aqi if live_aqi is not None else adjusted_aqi
     
