@@ -28,20 +28,9 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading]           = useState(false);
   const [feedback, setFeedback]         = useState<{ message: string; isError: boolean } | null>(null);
-  const [activeUserId, setActiveUserId] = useState<string | null>(null);
 
   const router = useRouter();
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-  useEffect(() => {
-    // If already logged in, go straight to dashboard
-    const stored = localStorage.getItem("aqi_user_id");
-    if (stored) {
-      router.replace(`/dashboard?user_id=${stored}`);
-    } else {
-      setActiveUserId(null);
-    }
-  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -179,7 +179,6 @@ export default function Home() {
             Live · India · CPCB
           </div>
           <nav className="nav-links">
-            <Link href="/" className="nav-link active">Register</Link>
             <Link href="/login" className="nav-link">Login</Link>
           </nav>
         </div>
@@ -476,21 +475,6 @@ export default function Home() {
           </div>
         </footer>
       </main>
-
-      {/* ── Command Dock ── */}
-      <nav className={`command-dock${dockHidden ? " hidden" : ""}`}>
-        <div className="glass dock-inner">
-          {[
-            { href: "/", label: "Register", icon: "○" },
-            { href: "/login", label: "Login", icon: "◎" },
-          ].map((item) => (
-            <Link key={item.label} href={item.href} className="dock-item">
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      </nav>
 
       {/* ── Success Modal ── */}
       <div className={`modal-backdrop${showModal ? " open" : ""}`} onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
