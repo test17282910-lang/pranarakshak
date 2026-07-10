@@ -186,11 +186,10 @@ export default function Home() {
 
       <main className="page-wrap">
         {/* ── Hero Section ── */}
-        <section className="section" style={{ minHeight: "100svh", display: "flex", flexDirection: "column", paddingTop: "8rem", paddingBottom: "4rem" }}>
-          <div className="section-inner" style={{ width: "100%", flex: "1", display: "flex", alignItems: "center" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center", maxWidth: "1200px", margin: "0 auto", width: "100%" }}>
+        <section className="section" style={{ minHeight: "100svh", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center", paddingTop: "6rem", paddingBottom: "4rem" }}>
+          <div className="section-inner" style={{ width: "100%", maxWidth: "1200px", margin: "0 auto", display: "contents" }}>
+            <div>
               {/* Left: Copy */}
-              <div>
                 <div className="overline reveal" style={{ transitionDelay: "0ms" }}>
                   <span className="overline-dash" />
                   Personalised Health Intelligence
@@ -411,7 +410,6 @@ export default function Home() {
                   </div>
                 </form>
               </div>
-            </div>
           </div>
         </section>
 
