@@ -22,7 +22,7 @@ export default function Home() {
   const [dockHidden, setDockHidden] = useState(false);
   const lastScroll = useRef(0);
 
-  const API_BASE_URL = "http://localhost:8000";
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     setActiveUserId(localStorage.getItem("aqi_user_id"));

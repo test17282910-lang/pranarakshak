@@ -14,7 +14,7 @@ export default function Login() {
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const router = useRouter();
 
-  const API_BASE_URL = "http://localhost:8000";
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     setActiveUserId(localStorage.getItem("aqi_user_id"));
