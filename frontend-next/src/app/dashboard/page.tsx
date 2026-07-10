@@ -432,13 +432,42 @@ export default function Dashboard() {
         </div>
 
         <nav className={`command-dock${dockHidden ? " hidden" : ""}`}>
-          <div className="glass dock-inner">
-            {[{ href: "/", label: "Register", icon: "○" }, { href: "/login", label: "Login", icon: "◎" }, { href: "/dashboard", label: "Dashboard", icon: "⬡" }].map((item) => (
-              <Link key={item.label} href={item.href} className={`dock-item${item.href === "/dashboard" ? " active" : ""}`}>
-                <span style={{ fontFamily: "var(--font-mono)" }}>{item.icon}</span>
-                <span>{item.label}</span>
-              </Link>
-            ))}
+          <div className="glass dock-inner" style={{ justifyContent: "space-between", padding: "0.75rem 1.5rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+              <div style={{ 
+                width: 32, 
+                height: 32, 
+                borderRadius: "50%", 
+                background: "var(--gradient-orb)", 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center",
+                fontSize: "0.875rem"
+              }}>
+                {profile?.name?.charAt(0).toUpperCase() || "?"}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
+                <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>{profile?.name || "User"}</span>
+                <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>
+                  {profile?.condition?.toUpperCase()} · {profile?.severity}
+                </span>
+              </div>
+            </div>
+            <button 
+              onClick={handleLogout} 
+              className="dock-item"
+              style={{ 
+                background: "rgba(255,255,255,0.05)", 
+                border: "1px solid var(--border)",
+                borderRadius: "0.5rem",
+                padding: "0.5rem 1rem",
+                fontSize: "0.8125rem",
+                cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+            >
+              Sign Out →
+            </button>
           </div>
         </nav>
       </>
@@ -1005,19 +1034,41 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* ── Command Dock ── */}
+      {/* ── User Info Dock ── */}
       <nav className={`command-dock${dockHidden ? " hidden" : ""}`}>
-        <div className="glass dock-inner">
-          {[
-            { href: "/", label: "Register", icon: "○" },
-            { href: "/login", label: "Login", icon: "◎" },
-            { href: userId ? `/dashboard?user_id=${userId}` : "/dashboard", label: "Dashboard", icon: "⬡" },
-          ].map((item) => (
-            <Link key={item.label} href={item.href} className={`dock-item${item.href === "/dashboard" ? " active" : ""}`}>
-              <span style={{ fontFamily: "var(--font-mono)" }}>{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          ))}
+        <div className="glass dock-inner" style={{ justifyContent: "space-between", padding: "0.75rem 1.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <div style={{ 
+              width: 40, 
+              height: 40, 
+              borderRadius: "50%", 
+              background: "var(--gradient-orb)", 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              fontSize: "1rem",
+              fontWeight: 600,
+              boxShadow: "0 0 20px rgba(var(--accent-rgb), 0.3)"
+            }}>
+              {profile?.name?.charAt(0).toUpperCase() || "?"}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+              <span style={{ fontSize: "0.9375rem", fontWeight: 500 }}>{profile?.name || "User"}</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>
+                {profile?.condition?.toUpperCase()} · {profile?.severity} · {profile?.email || profile?.phone || "No contact"}
+              </span>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout} 
+            className="btn-secondary"
+            style={{ 
+              fontSize: "0.8125rem",
+              padding: "0.5rem 1.25rem"
+            }}
+          >
+            Sign Out →
+          </button>
         </div>
       </nav>
     </>

@@ -3,6 +3,40 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
+// ── Password helpers ──────────────────────────────────────────────────────────
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+function EyeOffIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
+  let s = 0;
+  if (pw.length >= 8)           s++;
+  if (pw.length >= 12)          s++;
+  if (/[A-Z]/.test(pw))         s++;
+  if (/[0-9]/.test(pw))         s++;
+  if (/[^A-Za-z0-9]/.test(pw))  s++;
+  const levels = [
+    { score: 0, label: "",           color: "transparent" },
+    { score: 1, label: "Weak",       color: "oklch(0.62 0.18 28)" },
+    { score: 2, label: "Fair",       color: "oklch(0.72 0.14 45)" },
+    { score: 3, label: "Good",       color: "oklch(0.82 0.11 78)" },
+    { score: 4, label: "Strong",     color: "oklch(0.75 0.11 162)" },
+    { score: 5, label: "Very Strong",color: "oklch(0.78 0.09 210)" },
+  ];
+  return levels[Math.min(s, 5)];
+}
+
 export default function Home() {
   const [formData, setFormData] = useState({
     name: "", email: "", phone: "", password: "",
@@ -10,6 +44,7 @@ export default function Home() {
     lat: null as number | null, lon: null as number | null,
     personalized_issue: "",
   });
+  const [showPassword, setShowPassword]   = useState(false);
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -119,6 +154,8 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Registration failed");
+      // Persist immediately so the dashboard auto-loads
+      localStorage.setItem("aqi_user_id", data.user_id);
       setRegisteredUserId(data.user_id);
       setShowModal(true);
       setFormData({ name: "", email: "", phone: "", password: "", condition: "", severity: "moderate", lat: null, lon: null, personalized_issue: "" });
@@ -151,11 +188,11 @@ export default function Home() {
 
       <main className="page-wrap">
         {/* ── Hero Section ── */}
-        <section className="section" style={{ minHeight: "100svh", display: "flex", alignItems: "center", paddingTop: "8rem" }}>
+        <section className="section" style={{ minHeight: "100svh", display: "flex", alignItems: "center", paddingTop: "4rem", paddingBottom: "3rem" }}>
           <div className="section-inner" style={{ width: "100%" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5rem", alignItems: "center", maxWidth: "1200px", margin: "0 auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center", maxWidth: "1200px", margin: "0 auto" }}>
               {/* Left: Copy */}
-              <div>
+              <div style={{ paddingTop: "2rem" }}>
                 <div className="overline reveal" style={{ transitionDelay: "0ms" }}>
                   <span className="overline-dash" />
                   Personalised Health Intelligence
@@ -164,11 +201,11 @@ export default function Home() {
                 <h1
                   className="font-display reveal"
                   style={{
-                    fontSize: "clamp(3.5rem, 7vw, 7rem)",
+                    fontSize: "clamp(3rem, 6vw, 6rem)",
                     fontWeight: 300,
-                    lineHeight: 0.95,
+                    lineHeight: 1,
                     letterSpacing: "-0.03em",
-                    marginTop: "2rem",
+                    marginTop: "1.5rem",
                     transitionDelay: "120ms",
                   }}
                 >
@@ -177,16 +214,16 @@ export default function Home() {
                 </h1>
 
                 <p className="reveal" style={{
-                  marginTop: "2rem", fontSize: "1.125rem", lineHeight: 1.7,
+                  marginTop: "1.5rem", fontSize: "1.0625rem", lineHeight: 1.6,
                   color: "var(--muted-foreground)", maxWidth: "44ch", transitionDelay: "240ms",
                 }}>
                   AI-powered 24-hour AQI forecasts from real CPCB India monitoring stations —
                   personalised to your respiratory condition and triggers.
                 </p>
 
-                <div className="reveal" style={{ marginTop: "3rem", display: "flex", flexWrap: "wrap", gap: "2rem", transitionDelay: "360ms" }}>
+                <div className="reveal" style={{ marginTop: "2rem", display: "flex", flexWrap: "wrap", gap: "1.5rem", transitionDelay: "360ms" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                    <div style={{ display: "flex", height: "24px", alignItems: "flex-end", gap: "3px" }}>
+                    <div style={{ display: "flex", height: "20px", alignItems: "flex-end", gap: "2px" }}>
                       {[0.9, 0.7, 0.5, 0.35, 0.2].map((h, i) => (
                         <span key={i} style={{ display: "block", width: "3px", height: `${h * 100}%`, background: "var(--accent)", borderRadius: "2px", opacity: i < 4 ? 1 : 0.3 }} />
                       ))}
@@ -197,7 +234,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="reveal" style={{ marginTop: "3rem", paddingTop: "2rem", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "repeat(3, auto)", gap: "2.5rem", transitionDelay: "480ms" }}>
+                <div className="reveal" style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "repeat(3, auto)", gap: "2rem", transitionDelay: "480ms" }}>
                   {[
                     { label: "Sources", value: "WAQI", sub: "CPCB India" },
                     { label: "Forecast", value: "24h", sub: "Ahead" },
@@ -205,7 +242,7 @@ export default function Home() {
                   ].map((s) => (
                     <div key={s.label}>
                       <div style={{ fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.25em", color: "var(--muted-foreground)" }}>{s.label}</div>
-                      <div style={{ fontFamily: "var(--font-display)", fontSize: "1.875rem", fontWeight: 200, marginTop: "0.25rem" }}>{s.value}</div>
+                      <div style={{ fontFamily: "var(--font-display)", fontSize: "1.5rem", fontWeight: 200, marginTop: "0.25rem" }}>{s.value}</div>
                       <div style={{ fontSize: "0.6875rem", color: "var(--muted-foreground)" }}>{s.sub}</div>
                     </div>
                   ))}
@@ -243,7 +280,36 @@ export default function Home() {
 
                   <div className="form-group" style={{ marginTop: "1rem" }}>
                     <label htmlFor="password">Password</label>
-                    <input type="password" id="password" name="password" required placeholder="Create a secure account password" value={formData.password} onChange={handleInputChange} />
+                    <div className="password-field-wrap">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        id="password" name="password" required
+                        placeholder="Create a secure password (min. 8 chars)"
+                        value={formData.password}
+                        onChange={handleInputChange}
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                      </button>
+                    </div>
+                    {/* Strength bar — only shown while typing */}
+                    {formData.password.length > 0 && (() => {
+                      const s = getPasswordStrength(formData.password);
+                      return (
+                        <>
+                          <div className="password-strength-bar" aria-hidden="true">
+                            <div className="password-strength-fill" style={{ width: `${(s.score / 5) * 100}%`, backgroundColor: s.color }} />
+                          </div>
+                          <p className="password-strength-label" style={{ color: s.color }} aria-live="polite">{s.label}</p>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Health Info */}
@@ -428,7 +494,6 @@ export default function Home() {
           {[
             { href: "/", label: "Register", icon: "○" },
             { href: "/login", label: "Login", icon: "◎" },
-            { href: activeUserId ? `/dashboard?user_id=${activeUserId}` : "/dashboard", label: "Dashboard", icon: "⬡" },
           ].map((item) => (
             <Link key={item.label} href={item.href} className="dock-item">
               <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem" }}>{item.icon}</span>

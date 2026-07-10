@@ -1,3 +1,24 @@
 {
-  "framework": "nextjs"
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://lgnaabrgdqomxuxfonqo.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxnbmFhYnJnZHFvbXh1eGZvbnFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NzcxNDksImV4cCI6MjA5OTI1MzE0OX0.Jf4LaQe8shbLWik6sCwAjWvzl3el4dcQ9kW4N-evHfk",
+    "NEXT_PUBLIC_API_URL": "https://pranarakshak-production.up.railway.app"
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options",        "value": "DENY" },
+        { "key": "X-XSS-Protection",       "value": "1; mode=block" },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ]
 }

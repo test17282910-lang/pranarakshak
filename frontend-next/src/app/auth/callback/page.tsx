@@ -1,52 +1,105 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
+/**
+ * /auth/callback
+ *
+ * Only handles the password-reset flow.
+ * Supabase sends the user here with ?type=recovery&code=...
+ * We exchange that code for a live session, then send them to /reset-password.
+ *
+ * Any other landing here (stale link, wrong URL) redirects to /login.
+ */
 export default function AuthCallback() {
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const [statusMsg, setStatusMsg] = useState("Verifying reset link…");
+  const [isError, setIsError]     = useState(false);
 
   useEffect(() => {
-    const handleAuthCallback = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error("Auth callback error:", error);
-        router.push("/login?error=auth_failed");
-        return;
-      }
-      
-      const session = data?.session;
-      if (session?.user) {
-        localStorage.setItem("aqi_user_id", session.user.id);
-        // Redirect to dashboard with user_id query parameter
-        router.push(`/dashboard?user_id=${session.user.id}`);
-      } else {
-        router.push("/login");
+    const run = async () => {
+      try {
+        const type = searchParams.get("type");
+        const code = searchParams.get("code");
+
+        if (type === "recovery" && code) {
+          // Exchange the one-time code for a short-lived session
+          const supabase = getSupabaseClient();
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+
+          setStatusMsg("Link verified. Redirecting…");
+          router.replace("/reset-password");
+          return;
+        }
+
+        // Anything else — stale link, wrong params, etc.
+        throw new Error("Invalid or expired reset link. Please request a new one.");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Something went wrong.";
+        setStatusMsg(message);
+        setIsError(true);
+        setTimeout(() => router.replace(`/forgot-password`), 2500);
       }
     };
 
-    handleAuthCallback();
-  }, [router]);
+    run();
+  }, [router, searchParams]);
 
   return (
     <div style={{
       minHeight: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      alignItems: "center",
+      display: "flex", flexDirection: "column",
+      justifyContent: "center", alignItems: "center",
+      gap: "1.25rem",
       background: "var(--background)",
-      color: "var(--foreground)"
+      color: "var(--foreground)",
+      padding: "2rem",
+      textAlign: "center",
+      position: "relative",
+      zIndex: 1,
     }}>
-      <div className="loader-ring" style={{ width: 48, height: 48, border: "4px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-      <p style={{ marginTop: "1rem", fontSize: "0.875rem", color: "var(--muted-foreground)" }}>Completing Google authentication...</p>
-      
-      <style jsx global>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      {/* Logo */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+        <div className="logo-orb"><div className="logo-orb-inner" /></div>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: "1.25rem" }}>AQI Alert</span>
+      </div>
+
+      {/* Spinner or error icon */}
+      {isError ? (
+        <div style={{
+          width: 52, height: 52, borderRadius: "50%",
+          background: "rgba(248,113,113,0.1)",
+          border: "2px solid rgba(248,113,113,0.3)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#f87171", fontSize: "1.5rem",
+        }} aria-hidden="true">✕</div>
+      ) : (
+        <div style={{
+          width: 52, height: 52,
+          border: "3px solid rgba(255,255,255,0.08)",
+          borderTopColor: "var(--accent)",
+          borderRadius: "50%",
+          animation: "spin 1s linear infinite",
+        }} role="status" aria-label="Loading" />
+      )}
+
+      <p style={{
+        fontSize: "0.9375rem",
+        color: isError ? "#f87171" : "var(--muted-foreground)",
+        maxWidth: "36ch", lineHeight: 1.6,
+      }} role={isError ? "alert" : "status"} aria-live="polite">
+        {statusMsg}
+      </p>
+
+      {isError && (
+        <p style={{ fontSize: "0.8125rem", color: "var(--muted-foreground)" }}>
+          Redirecting to forgot password…
+        </p>
+      )}
     </div>
   );
 }
