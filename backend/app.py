@@ -693,6 +693,57 @@ def health() -> HealthResponse:
     )
 
 
+@app.get("/test-alert/{user_id}", tags=["System"])
+async def test_alert(user_id: str):
+    """
+    TEST ENDPOINT: Force send SMS and email alert to a user.
+    Use this to debug Twilio/SendGrid configuration.
+    """
+    import asyncio
+    from alerts import send_sms, send_email
+    
+    # Get user
+    user = await asyncio.to_thread(db.get_user_by_id, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    results = {"user_id": user_id, "sms": None, "email": None}
+    
+    # Test SMS
+    phone = user.get("phone")
+    if phone:
+        sms_text = f"🧪 TEST ALERT from Pranarakshak\n\nHello {user.get('name', 'User')}! This is a test SMS to verify Twilio is working correctly."
+        status, msg_id = send_sms(phone, sms_text)
+        results["sms"] = {"status": status, "id": msg_id, "phone": phone}
+        logger.info(f"Test SMS sent to {phone}: {status} - {msg_id}")
+    else:
+        results["sms"] = {"status": "skipped", "reason": "No phone number"}
+    
+    # Test Email
+    email = user.get("email")
+    if email:
+        subject = "🧪 Test Alert from Pranarakshak"
+        html = f"""
+<html>
+<body style="font-family: Arial; padding: 20px;">
+<h2>✅ Test Alert Success!</h2>
+<p>Hello {user.get('name', 'User')},</p>
+<p>This is a <strong>test email</strong> to verify SendGrid is configured correctly.</p>
+<p>If you're seeing this, your email alerts are working! 🎉</p>
+<hr>
+<p style="color: #666; font-size: 12px;">Pranarakshak Alert System</p>
+</body>
+</html>
+"""
+        status, msg_id = send_email(email, subject, html)
+        results["email"] = {"status": status, "id": msg_id, "email": email}
+        logger.info(f"Test email sent to {email}: {status} - {msg_id}")
+    else:
+        results["email"] = {"status": "skipped", "reason": "No email"}
+    
+    return results
+
+
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 async def predict(payload: PredictRequest) -> PredictionResponse:
     """
