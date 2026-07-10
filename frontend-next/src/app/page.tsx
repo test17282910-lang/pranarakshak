@@ -244,6 +244,94 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
+
+                {/* Animated Air Quality Visualization */}
+                <div className="reveal" style={{ marginTop: "3rem", position: "relative", height: "280px", display: "flex", alignItems: "center", justifyContent: "center", transitionDelay: "600ms" }}>
+                  {/* Rotating orbital rings */}
+                  <div style={{ position: "relative", width: "280px", height: "280px" }}>
+                    {[
+                      { size: 280, duration: "40s", delay: "0s", opacity: 0.15 },
+                      { size: 220, duration: "30s", delay: "-10s", opacity: 0.2, reverse: true },
+                      { size: 160, duration: "25s", delay: "-5s", opacity: 0.25 },
+                    ].map((ring, i) => (
+                      <svg
+                        key={i}
+                        viewBox="0 0 100 100"
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%)",
+                          width: ring.size,
+                          height: ring.size,
+                          opacity: ring.opacity,
+                          animation: `ring-rotate ${ring.duration} linear ${ring.reverse ? 'reverse' : 'normal'} infinite`,
+                          animationDelay: ring.delay,
+                        }}
+                      >
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="48"
+                          fill="none"
+                          stroke="var(--accent)"
+                          strokeWidth="0.5"
+                          strokeDasharray={i === 0 ? "2 10" : i === 1 ? "1 8" : "1 6"}
+                        />
+                      </svg>
+                    ))}
+
+                    {/* Central pulsing orb */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "50%",
+                        left: "50%",
+                        transform: "translate(-50%, -50%)",
+                        width: "120px",
+                        height: "120px",
+                        borderRadius: "50%",
+                        background: "radial-gradient(circle at 35% 35%, oklch(0.85 0.12 162 / 0.4), oklch(0.55 0.14 162 / 0.2) 50%, oklch(0.25 0.08 180 / 0.3))",
+                        boxShadow: "0 0 60px oklch(0.75 0.11 162 / 0.3), inset -8px -12px 24px rgba(0,0,0,0.3), inset 8px 12px 24px rgba(255,255,255,0.1)",
+                        animation: "orb-pulse 4s ease-in-out infinite",
+                      }}
+                    />
+
+                    {/* Floating particles */}
+                    {[...Array(8)].map((_, i) => (
+                      <div
+                        key={`particle-${i}`}
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "50%",
+                          width: "4px",
+                          height: "4px",
+                          borderRadius: "50%",
+                          background: "var(--accent)",
+                          opacity: 0.4,
+                          animation: `particle-orbit-${i % 2 === 0 ? '1' : '2'} ${20 + i * 2}s linear infinite`,
+                          animationDelay: `${-i * 2.5}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Label */}
+                  <div style={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    fontSize: "0.625rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.3em",
+                    color: "var(--muted-foreground)",
+                    textAlign: "center",
+                  }}>
+                    Real-Time Monitoring
+                  </div>
+                </div>
               </div>
 
               {/* Right: Registration Form */}
