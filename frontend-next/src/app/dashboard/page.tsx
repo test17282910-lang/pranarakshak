@@ -522,9 +522,14 @@ export default function Dashboard() {
           )}
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             {profile && (
-              <button onClick={handleRefreshPrediction} disabled={loading} className="btn-secondary" style={{ fontSize: "0.75rem" }}>
-                {loading ? <span className="loader-ring" /> : "↺ Refresh"}
-              </button>
+              <>
+                <button onClick={handleRefreshPrediction} disabled={loading} className="btn-secondary" style={{ fontSize: "0.75rem" }}>
+                  {loading ? <span className="loader-ring" /> : "📍 Update Location"}
+                </button>
+                <button onClick={() => fetchUserData(userId!)} disabled={loading} className="btn-secondary" style={{ fontSize: "0.75rem" }}>
+                  {loading ? <span className="loader-ring" /> : "↺ Refresh Data"}
+                </button>
+              </>
             )}
             <button onClick={handleLogout} className="btn-secondary" style={{ fontSize: "0.75rem" }}>Sign Out</button>
           </div>
