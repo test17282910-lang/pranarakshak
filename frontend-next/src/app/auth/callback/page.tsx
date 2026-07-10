@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
@@ -13,7 +13,7 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
  *
  * Any other landing here (stale link, wrong URL) redirects to /login.
  */
-export default function AuthCallback() {
+function AuthCallbackContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const [statusMsg, setStatusMsg] = useState("Verifying reset link…");
@@ -101,5 +101,29 @@ export default function AuthCallback() {
         </p>
       )}
     </div>
+  );
+}
+
+export default function AuthCallback() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        background: "var(--background)",
+      }}>
+        <div style={{
+          width: 52, height: 52,
+          border: "3px solid rgba(255,255,255,0.08)",
+          borderTopColor: "var(--accent)",
+          borderRadius: "50%",
+          animation: "spin 1s linear infinite",
+        }} role="status" aria-label="Loading" />
+      </div>
+    }>
+      <AuthCallbackContent />
+    </Suspense>
   );
 }
