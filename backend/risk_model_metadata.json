@@ -1,0 +1,113 @@
+{
+  "model_type": "XGBoostClassifier",
+  "f1_weighted": 1.0,
+  "class_names": [
+    "safe",
+    "caution",
+    "high_risk",
+    "critical"
+  ],
+  "features": [
+    "aqi",
+    "pm25",
+    "pm10",
+    "no2",
+    "o3",
+    "co",
+    "temperature",
+    "humidity",
+    "cond_copd",
+    "cond_asthma",
+    "cond_both",
+    "cond_other",
+    "sev_mild",
+    "sev_moderate",
+    "sev_severe"
+  ],
+  "classification_report": {
+    "safe": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 3.0
+    },
+    "caution": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 3.0
+    },
+    "high_risk": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 28.0
+    },
+    "critical": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 223.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 257.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 257.0
+    }
+  },
+  "feature_importances": {
+    "aqi": 0.2624484896659851,
+    "pm25": 0.09287764877080917,
+    "pm10": 0.061602670699357986,
+    "no2": 0.18893539905548096,
+    "o3": 0.005491306073963642,
+    "co": 0.11500262469053268,
+    "temperature": 0.008783392608165741,
+    "humidity": 0.0032194554805755615,
+    "cond_copd": 0.004910763818770647,
+    "cond_asthma": 0.000998650910332799,
+    "cond_both": 0.0,
+    "cond_other": 0.0,
+    "sev_mild": 0.10713548958301544,
+    "sev_moderate": 0.09472284466028214,
+    "sev_severe": 0.05387131869792938
+  },
+  "top5_features": [
+    [
+      "aqi",
+      0.2624484896659851
+    ],
+    [
+      "no2",
+      0.18893539905548096
+    ],
+    [
+      "co",
+      0.11500262469053268
+    ],
+    [
+      "sev_mild",
+      0.10713548958301544
+    ],
+    [
+      "sev_moderate",
+      0.09472284466028214
+    ]
+  ],
+  "n_train": 1027,
+  "n_test": 257,
+  "data_sources": [
+    "asthma_disease_data.csv",
+    "lung_disease_data.csv",
+    "asthma_dataset.csv"
+  ],
+  "trained_at": "2026-07-10T10:43:03.774941Z"
+}

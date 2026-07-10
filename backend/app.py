@@ -140,9 +140,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Read allowed origins from env so it's tight in production.
+    # CORS_ORIGINS env var = comma-separated list, e.g.:
+    #   https://your-app.vercel.app,https://your-custom-domain.com
+    # Falls back to "*" only if not set (local dev convenience).
+    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -162,6 +166,7 @@ class RegisterRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[EmailStr] = None
+    password: Optional[str] = Field(None, min_length=8, description="Plaintext password — hashed before storage")
     condition: str = Field(..., description="Health condition: 'copd', 'asthma', 'both', 'other'")
     severity: str = Field("moderate", description="Condition severity: 'mild', 'moderate', 'severe'")
     lat: Optional[float] = Field(None, ge=-90, le=90)
@@ -172,6 +177,7 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     identifier: str = Field(..., description="Email, phone, or User UUID")
+    password: Optional[str] = Field(None, description="Required for email/phone login; omit for UUID-only lookup")
 
 
 class LocationUpdateRequest(BaseModel):
@@ -901,6 +907,7 @@ def trigger_training(background_tasks: BackgroundTasks) -> dict:
 @app.post("/register", tags=["Users"])
 def register_user(payload: RegisterRequest):
     """Register a new user and store their profile in the database."""
+    import bcrypt
     from postgrest.exceptions import APIError as PostgRESTError
 
     user_data = {
@@ -913,21 +920,25 @@ def register_user(payload: RegisterRequest):
         "last_known_lon": payload.lon,
         "symptoms": payload.symptoms,
         "personalized_issue": payload.personalized_issue,
-        "active": True
+        "active": True,
     }
-    
+
+    # Hash password before storage — never store plaintext
+    if payload.password:
+        user_data["password_hash"] = bcrypt.hashpw(
+            payload.password.encode("utf-8"), bcrypt.gensalt(rounds=12)
+        ).decode("utf-8")
+
     if payload.lat is not None and payload.lon is not None:
         user_data["location_consent"] = True
         user_data["location_updated_at"] = datetime.now(timezone.utc).isoformat()
-        
+
     try:
         user = db.create_user(user_data)
         if not user:
             raise HTTPException(status_code=500, detail="Failed to create user record.")
         return {"message": "User registered successfully", "user_id": user["id"]}
     except PostgRESTError as exc:
-        # postgrest-py exposes error fields as direct attributes (.code, .details, .message)
-        # Fall back to args[0] dict or str(exc) for safety
         code = getattr(exc, "code", None)
         details = getattr(exc, "details", None)
         if code is None:
@@ -940,7 +951,6 @@ def register_user(payload: RegisterRequest):
                 code = "23505" if "23505" in exc_str else ""
                 details = exc_str
         if str(code) == "23505":
-            # Unique constraint violation — duplicate email or phone
             detail_str = str(details or str(exc))
             if "email" in detail_str:
                 raise HTTPException(status_code=409, detail="This email address is already registered.")
@@ -959,32 +969,63 @@ def register_user(payload: RegisterRequest):
 
 @app.post("/login", tags=["Users"])
 def login_user(payload: LoginRequest):
-    """Authenticate/lookup a user by Email, Phone, or User ID (UUID)."""
+    """
+    Authenticate a user by Email/Phone + password, or by bare UUID (legacy dashboard lookup).
+
+    Flow:
+      1. UUID  → no password needed — used by dashboard auto-load from localStorage
+      2. Email → password required  — bcrypt.checkpw against stored hash
+      3. Phone → password required  — same as email
+    """
+    import bcrypt
+
     identifier = payload.identifier.strip()
-    
-    # 1. Try UUID lookup
+    user: Optional[dict] = None
+    requires_password = True
+
+    # ── 1. UUID lookup (no password required — used internally) ───────────────
     try:
-        # Check if format is a valid UUID
-        from uuid import UUID
-        UUID(identifier)
+        from uuid import UUID as _UUID
+        _UUID(identifier)          # raises ValueError if not a valid UUID
         user = db.get_user_by_id(identifier)
-        if user:
-            return {"message": "Login successful", "user_id": user["id"]}
+        requires_password = False  # UUID lookup is trusted — no password gate
     except ValueError:
-        pass  # Not a valid UUID, continue
-        
-    # 2. Try Email lookup
-    if "@" in identifier:
+        pass
+
+    # ── 2. Email lookup ────────────────────────────────────────────────────────
+    if user is None and "@" in identifier:
         user = db.get_user_by_email(identifier)
-        if user:
-            return {"message": "Login successful", "user_id": user["id"]}
-            
-    # 3. Try Phone lookup
-    user = db.get_user_by_phone(identifier)
-    if user:
-        return {"message": "Login successful", "user_id": user["id"]}
-        
-    raise HTTPException(status_code=404, detail="No registered user found with these details.")
+
+    # ── 3. Phone lookup ────────────────────────────────────────────────────────
+    if user is None:
+        user = db.get_user_by_phone(identifier)
+
+    # ── User not found ─────────────────────────────────────────────────────────
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid credentials.")
+
+    # ── Password verification (email / phone flows) ────────────────────────────
+    if requires_password:
+        if not payload.password:
+            raise HTTPException(status_code=422, detail="Password is required.")
+
+        stored_hash = user.get("password_hash")
+        if not stored_hash:
+            # Account exists but has no password — likely OAuth-only registration
+            raise HTTPException(
+                status_code=400,
+                detail="This account was created with Google. Please use 'Continue with Google'."
+            )
+
+        # Use constant-time comparison to prevent timing attacks
+        password_ok = bcrypt.checkpw(
+            payload.password.encode("utf-8"),
+            stored_hash.encode("utf-8"),
+        )
+        if not password_ok:
+            raise HTTPException(status_code=401, detail="Invalid credentials.")
+
+    return {"message": "Login successful", "user_id": user["id"]}
 
 
 @app.post("/update-location", tags=["Users"])

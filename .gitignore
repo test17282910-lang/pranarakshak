@@ -18,12 +18,19 @@ dist/
 build/
 .eggs/
 
-# ── ML Model Artifacts (large binaries — store in cloud storage instead) ──────
-backend/*.h5
-backend/*.pkl
-backend/*.json
+# ── ML Model Artifacts (committed for Railway deployment) ─────────────────────
+# Note: These are needed for production. If files grow too large (>100MB),
+# consider using Git LFS or cloud storage instead.
+!backend/aqi_lstm.h5
+!backend/scaler.pkl
 !backend/model_metadata.json
+!backend/seasonal_baseline.json
+!backend/risk_model.pkl
+!backend/risk_label_encoder.pkl
+!backend/risk_model_metadata.json
+# Still ignore other generated files:
 backend/*.keras
+backend/demo_*.json
 
 # ── Next.js / Node ─────────────────────────────────────────────────────────────
 frontend-next/node_modules/
