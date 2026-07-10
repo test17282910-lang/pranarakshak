@@ -187,9 +187,9 @@ export default function Home() {
 
       <main className="page-wrap">
         {/* ── Hero Section ── */}
-        <section className="section" style={{ minHeight: "100svh", display: "flex", alignItems: "center", paddingTop: "6rem", paddingBottom: "3rem" }}>
-          <div className="section-inner" style={{ width: "100%" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center", maxWidth: "1200px", margin: "0 auto" }}>
+        <section className="section" style={{ minHeight: "100svh", display: "flex", flexDirection: "column", paddingTop: "8rem", paddingBottom: "4rem" }}>
+          <div className="section-inner" style={{ width: "100%", flex: "1", display: "flex", alignItems: "center" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center", maxWidth: "1200px", margin: "0 auto", width: "100%" }}>
               {/* Left: Copy */}
               <div>
                 <div className="overline reveal" style={{ transitionDelay: "0ms" }}>
@@ -413,16 +413,6 @@ export default function Home() {
                 </form>
               </div>
             </div>
-          </div>
-
-          {/* Scroll cue */}
-          <div style={{
-            position: "absolute", bottom: "2rem", left: "50%", transform: "translateX(-50%)",
-            display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem",
-            fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.4em", color: "rgba(122,136,153,0.6)",
-          }}>
-            <span>Scroll</span>
-            <span style={{ display: "block", width: "1px", height: "2.5rem", background: "linear-gradient(to bottom, rgba(242,240,232,0.5), transparent)" }} className="animate-float-y" />
           </div>
         </section>
 
