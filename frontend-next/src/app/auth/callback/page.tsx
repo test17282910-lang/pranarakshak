@@ -65,7 +65,7 @@ function AuthCallbackContent() {
       {/* Logo */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <div className="logo-orb"><div className="logo-orb-inner" /></div>
-        <span style={{ fontFamily: "var(--font-display)", fontSize: "1.25rem" }}>AQI Alert</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: "1.25rem" }}>Pranarakshak</span>
       </div>
 
       {/* Spinner or error icon */}

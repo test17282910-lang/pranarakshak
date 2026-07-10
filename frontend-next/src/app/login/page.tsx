@@ -77,7 +77,7 @@ export default function Login() {
         <div className="topbar-inner">
           <Link href="/" className="logo" style={{ textDecoration: "none", color: "var(--foreground)" }}>
             <div className="logo-orb"><div className="logo-orb-inner" /></div>
-            <span className="logo-name">AQI Alert</span>
+            <span className="logo-name">Pranarakshak</span>
           </Link>
           <div className="topbar-status">
             <span className="live-dot animate-pulse" />
@@ -86,12 +86,6 @@ export default function Login() {
           <nav className="nav-links">
             <Link href="/"      className="nav-link">Register</Link>
             <Link href="/login" className="nav-link active">Login</Link>
-            <Link
-              href={activeUserId ? `/dashboard?user_id=${activeUserId}` : "/dashboard"}
-              className="nav-link"
-            >
-              Dashboard
-            </Link>
           </nav>
         </div>
       </header>

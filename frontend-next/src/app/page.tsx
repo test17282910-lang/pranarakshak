@@ -172,7 +172,7 @@ export default function Home() {
         <div className="topbar-inner">
           <div className="logo">
             <div className="logo-orb"><div className="logo-orb-inner" /></div>
-            <span className="logo-name">AQI Alert</span>
+            <span className="logo-name">Pranarakshak</span>
           </div>
           <div className="topbar-status">
             <span className="live-dot animate-pulse" />
@@ -181,18 +181,17 @@ export default function Home() {
           <nav className="nav-links">
             <Link href="/" className="nav-link active">Register</Link>
             <Link href="/login" className="nav-link">Login</Link>
-            <Link href={activeUserId ? `/dashboard?user_id=${activeUserId}` : "/dashboard"} className="nav-link">Dashboard</Link>
           </nav>
         </div>
       </header>
 
       <main className="page-wrap">
         {/* ── Hero Section ── */}
-        <section className="section" style={{ minHeight: "100svh", display: "flex", alignItems: "center", paddingTop: "4rem", paddingBottom: "3rem" }}>
+        <section className="section" style={{ minHeight: "100svh", display: "flex", alignItems: "center", paddingTop: "6rem", paddingBottom: "3rem" }}>
           <div className="section-inner" style={{ width: "100%" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center", maxWidth: "1200px", margin: "0 auto" }}>
               {/* Left: Copy */}
-              <div style={{ paddingTop: "2rem" }}>
+              <div>
                 <div className="overline reveal" style={{ transitionDelay: "0ms" }}>
                   <span className="overline-dash" />
                   Personalised Health Intelligence
@@ -473,10 +472,10 @@ export default function Home() {
             <div>
               <div className="logo" style={{ marginBottom: "0.75rem" }}>
                 <div className="logo-orb"><div className="logo-orb-inner" /></div>
-                <span className="logo-name">AQI Alert</span>
+                <span className="logo-name">Pranarakshak</span>
               </div>
               <p style={{ fontSize: "0.8125rem", color: "var(--muted-foreground)", maxWidth: "34ch", lineHeight: 1.6 }}>
-                Environmental health intelligence for India.<br />© 2026 AQI Alert System.
+                Environmental health intelligence for India.<br />© 2026 Pranarakshak System.
               </p>
             </div>
             <div style={{ display: "flex", gap: "2rem", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--muted-foreground)" }}>

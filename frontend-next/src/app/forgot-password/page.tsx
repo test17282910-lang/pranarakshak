@@ -45,7 +45,7 @@ export default function ForgotPassword() {
         <div className="topbar-inner">
           <Link href="/" className="logo" style={{ textDecoration: "none", color: "var(--foreground)" }}>
             <div className="logo-orb"><div className="logo-orb-inner" /></div>
-            <span className="logo-name">AQI Alert</span>
+            <span className="logo-name">Pranarakshak</span>
           </Link>
           <div className="topbar-status">
             <span className="live-dot animate-pulse" />
