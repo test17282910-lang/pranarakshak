@@ -138,16 +138,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Parse CORS origins from env, stripping whitespace
+cors_origins_raw = os.getenv("CORS_ORIGINS", "*")
+if cors_origins_raw == "*":
+    allowed_origins = ["*"]
+else:
+    # Split by comma and strip whitespace from each origin
+    allowed_origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    # Read allowed origins from env so it's tight in production.
-    # CORS_ORIGINS env var = comma-separated list, e.g.:
-    #   https://your-app.vercel.app,https://your-custom-domain.com
-    # Falls back to "*" only if not set (local dev convenience).
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods including OPTIONS
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all response headers
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 
