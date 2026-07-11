@@ -184,6 +184,70 @@ body {
   100% { transform: translate(-50%, -50%) rotate(360deg) translateX(80px) scale(1); opacity: 0.3; }
 }
 
+@keyframes earth-rotate {
+  0%   { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes atmosphere-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.02); }
+}
+
+@keyframes location-pulse {
+  0%, 100% { transform: translate(-50%, -50%) translateX(20px) translateY(-10px) scale(1); opacity: 1; }
+  50%      { transform: translate(-50%, -50%) translateX(20px) translateY(-10px) scale(1.3); opacity: 0.7; }
+}
+
+@keyframes satellite-orbit {
+  0%   { transform: translate(-50%, -50%) rotate(0deg) translateY(-140px); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) rotate(360deg) translateY(-140px); opacity: 0.8; }
+}
+
+@keyframes data-stream-0 {
+  0%   { transform: translate(-50%, -50%) rotate(0deg) translateX(80px) scale(0); opacity: 0; }
+  10%  { opacity: 0.8; scale: 1; }
+  90%  { opacity: 0.8; scale: 1; }
+  100% { transform: translate(-50%, -50%) rotate(360deg) translateX(80px) scale(0); opacity: 0; }
+}
+
+@keyframes data-stream-1 {
+  0%   { transform: translate(-50%, -50%) rotate(120deg) translateX(100px) scale(0); opacity: 0; }
+  15%  { opacity: 0.6; scale: 1.2; }
+  85%  { opacity: 0.6; scale: 1.2; }
+  100% { transform: translate(-50%, -50%) rotate(480deg) translateX(100px) scale(0); opacity: 0; }
+}
+
+@keyframes data-stream-2 {
+  0%   { transform: translate(-50%, -50%) rotate(240deg) translateX(120px) scale(0); opacity: 0; }
+  20%  { opacity: 0.7; scale: 0.8; }
+  80%  { opacity: 0.7; scale: 0.8; }
+  100% { transform: translate(-50%, -50%) rotate(600deg) translateX(120px) scale(0); opacity: 0; }
+}
+
+@keyframes cloud-drift {
+  0%   { transform: translate(-50%, -50%) rotate(0deg); opacity: 0.15; }
+  50%  { opacity: 0.25; }
+  100% { transform: translate(-50%, -50%) rotate(360deg); opacity: 0.15; }
+}
+
+@keyframes ozone-shimmer {
+  0%, 100% { opacity: 0.1; transform: scale(1); }
+  33%      { opacity: 0.15; transform: scale(1.01); }
+  66%      { opacity: 0.08; transform: scale(0.99); }
+}
+
+@keyframes india-pulse {
+  0%, 100% { transform: translate(-50%, -50%) translateX(28px) translateY(-15px) scale(1); opacity: 1; }
+  50%      { transform: translate(-50%, -50%) translateX(28px) translateY(-15px) scale(1.4); opacity: 0.8; }
+}
+
+@keyframes marker-ring-expand {
+  0%   { transform: scale(1); opacity: 0.3; }
+  50%  { transform: scale(2); opacity: 0.1; }
+  100% { transform: scale(3); opacity: 0; }
+}
+
 .animate-drift      { animation: drift 20s ease-in-out infinite; }
 .animate-drift-slow { animation: drift-slow 26s ease-in-out infinite; }
 .animate-orb        { animation: orb-pulse 8s ease-in-out infinite; }

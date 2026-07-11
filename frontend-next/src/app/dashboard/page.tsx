@@ -53,6 +53,16 @@ interface PredictionData {
   forecast_for: string;
 }
 
+// ── India NAQI Air Quality Classification ────────────────────────────────────
+function naqi_air_quality_tier(aqi: number): string {
+  if (aqi <= 50) return "Good";
+  if (aqi <= 100) return "Satisfactory"; 
+  if (aqi <= 200) return "Moderate";
+  if (aqi <= 300) return "Poor";
+  if (aqi <= 400) return "Very Poor";
+  return "Severe";
+}
+
 // ── Air Quality Tier helpers (India NAQI) ────────────────────────────────────
 function getAqiTierColor(tier: string): string {
   switch (tier?.toLowerCase()) {
@@ -173,7 +183,7 @@ function AtmosphericOrb({ aqi, tier }: { aqi: number; tier: string }) {
         background: `radial-gradient(circle at 32% 28%, oklch(0.88 0.10 ${getTierHue(tier)} / 0.9), oklch(0.55 0.12 ${getTierHue(tier)} / 0.7) 45%, oklch(0.20 0.04 250 / 0.5) 80%)`,
         boxShadow: `inset -12px -20px 40px rgba(0,0,0,0.45), inset 12px 18px 40px rgba(255,255,255,0.12), 0 0 100px ${color.replace(")", " / 0.35)")}`,
       }}>
-        <span className="atmo-core-label">Current AQI</span>
+        <span className="atmo-core-label">24h Forecast</span>
         <span className="atmo-core-value">{Math.round(aqi)}</span>
         <span className="atmo-core-tier">{tier}</span>
       </div>
@@ -369,8 +379,8 @@ export default function Dashboard() {
     );
   };
 
-  const tierHue = prediction ? getTierHue(prediction.alert_tier) : "162";
-  const tierColor = prediction ? getTierColor(prediction.alert_tier) : "oklch(0.75 0.11 162)";
+  const tierHue = prediction ? getTierHue(naqi_air_quality_tier(predictedAqi)) : "162";
+  const tierColor = prediction ? getTierColor(naqi_air_quality_tier(predictedAqi)) : "oklch(0.75 0.11 162)";
 
   // ── Render: Login Screen ───────────────────────────────────────────────────
   if (!userId || (!loading && !profile && !error)) {
@@ -525,11 +535,11 @@ export default function Dashboard() {
   }
 
   // ── Render: Full Dashboard ─────────────────────────────────────────────────
-  const currentAqi   = prediction?.current_aqi ?? prediction?.predicted_aqi_adjusted ?? 0;
+  const currentAqi   = prediction?.current_aqi ?? 0;
   const predictedAqi = prediction?.predicted_aqi_adjusted ?? 0;
-  const pct          = getAqiPercent(currentAqi);
+  const pct          = getAqiPercent(predictedAqi); // Use predicted for main calculations
 
-  // Derive comfort ring values from AQI
+  // Derive comfort ring values from predicted AQI
   const pm25Score  = prediction ? Math.max(0, 100 - getAqiPercent(prediction.predicted_aqi_adjusted)) : 50;
   const confScore  = prediction ? Math.min(100, 100 - (prediction.prediction_confidence / 50) * 100) : 50;
   const safetyScore = Math.max(0, 100 - pct);
@@ -585,14 +595,34 @@ export default function Dashboard() {
               {/* ── Primary Row ── */}
               <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2rem", alignItems: "start", marginBottom: "2rem" }}>
 
-                {/* Atmospheric Orb — colour driven by factual air quality */}
+                {/* Atmospheric Orb — colour driven by predicted air quality */}
                 <div className="glass reveal" style={{ borderRadius: "1.5rem", padding: "2.5rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "1.5rem", transitionDelay: "0ms" }}>
-                  <AtmosphericOrb aqi={currentAqi} tier={prediction.air_quality_tier ?? "good"} />
+                  <div style={{ position: "relative" }}>
+                    <AtmosphericOrb aqi={predictedAqi} tier={naqi_air_quality_tier(predictedAqi)} />
+                    <div style={{
+                      position: "absolute",
+                      top: "-0.5rem",
+                      right: "-0.5rem",
+                      background: "oklch(0.78 0.10 210)",
+                      color: "white",
+                      fontSize: "0.625rem",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      padding: "0.25rem 0.5rem",
+                      borderRadius: "9999px",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.3)"
+                    }}>
+                      24h AI
+                    </div>
+                  </div>
 
                   {/* Badges */}
                   <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
                     <span className="badge badge-accent">{prediction.prediction_source}</span>
-                    <span className="badge">{prediction.air_quality_tier ?? "—"}</span>
+                    <span className="badge">{naqi_air_quality_tier(predictedAqi)}</span>
+                    <span className="badge" style={{ background: "oklch(0.78 0.10 210 / 0.15)", border: "1px solid oklch(0.78 0.10 210 / 0.3)", color: "oklch(0.78 0.10 210)" }}>
+                      Forecast
+                    </span>
                   </div>
                 </div>
 
@@ -604,15 +634,16 @@ export default function Dashboard() {
 
                     {/* Top: explanatory label */}
                     <div style={{ marginBottom: "1.25rem", paddingBottom: "1rem", borderBottom: "1px solid var(--border)" }}>
-                      <div className="overline" style={{ marginBottom: "0.25rem" }}><span className="overline-dash" />Two separate readings</div>
+                      <div className="overline" style={{ marginBottom: "0.25rem" }}><span className="overline-dash" />Live + Forecast + Personalized Risk</div>
                       <p style={{ fontSize: "0.75rem", color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-                        <strong style={{ color: "rgba(242,240,232,0.7)" }}>Air Quality</strong> is the factual NAQI level at your location.
-                        &nbsp;<strong style={{ color: "rgba(242,240,232,0.7)" }}>Health Risk</strong> is personalised to your condition, severity &amp; symptoms.
+                        <strong style={{ color: "rgba(242,240,232,0.7)" }}>Current AQI</strong> is live NAQI data from nearby stations.
+                        &nbsp;<strong style={{ color: "rgba(242,240,232,0.7)" }}>24h Forecast</strong> is AI-predicted AQI for tomorrow.
+                        &nbsp;<strong style={{ color: "rgba(242,240,232,0.7)" }}>Health Risk</strong> is personalised to your condition.
                       </p>
                     </div>
 
-                    {/* 4-col grid: AQI value | AQ tier | predicted | risk tier */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", gap: "1.25rem", alignItems: "center" }}>
+                    {/* 5-col grid: Current AQI | 24h Predicted | AQ tier | Risk tier */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr auto 1fr", gap: "1.25rem", alignItems: "center" }}>
 
                       {/* Current AQI number with Trend indicator */}
                       <div>
@@ -641,6 +672,38 @@ export default function Dashboard() {
 
                       <div style={{ width: 1, height: 52, background: "var(--border)" }} />
 
+                      {/* 24h Predicted AQI */}
+                      <div>
+                        <div className="metric-lbl" style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                          24h Forecast
+                          <span style={{
+                            fontSize: "0.625rem",
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            padding: "0.1rem 0.35rem",
+                            borderRadius: "4px",
+                            border: "1px solid oklch(0.78 0.10 210 / 0.4)",
+                            background: "oklch(0.78 0.10 210 / 0.08)",
+                            color: "oklch(0.78 0.10 210)"
+                          }}>
+                            AI
+                          </span>
+                        </div>
+                        <div className="metric-val" style={{ color: getAqiTierColor(naqi_air_quality_tier(predictedAqi)), fontSize: "2.25rem" }}>
+                          {Math.round(predictedAqi)}
+                        </div>
+                        <div className="metric-sub">
+                          {new Date(prediction.forecast_for).toLocaleDateString("en-IN", { 
+                            day: "2-digit", 
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </div>
+                      </div>
+
+                      <div style={{ width: 1, height: 52, background: "var(--border)" }} />
+
                       {/* Air Quality tier */}
                       <div>
                         <div className="metric-lbl">Air Quality</div>
@@ -659,7 +722,7 @@ export default function Dashboard() {
                             {prediction.air_quality_tier ?? "—"}
                           </span>
                         </div>
-                        <div className="metric-sub" style={{ marginTop: "0.35rem" }}>NAQI scale</div>
+                        <div className="metric-sub" style={{ marginTop: "0.35rem" }}>Current (NAQI)</div>
                       </div>
 
                       <div style={{ width: 1, height: 52, background: "var(--border)" }} />

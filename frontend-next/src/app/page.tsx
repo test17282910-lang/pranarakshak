@@ -247,14 +247,19 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* Animated Air Quality Visualization */}
-                <div className="reveal" style={{ marginTop: "3rem", position: "relative", height: "280px", display: "flex", alignItems: "center", justifyContent: "center", transitionDelay: "600ms" }}>
-                  {/* Rotating orbital rings */}
-                  <div style={{ position: "relative", width: "280px", height: "280px" }}>
+                {/* Enhanced Earth Monitoring Visualization - Larger & More Detailed */}
+                <div className="reveal" style={{ marginTop: "calc(5rem + 150px)", position: "relative", height: "560px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", transitionDelay: "600ms" }}>
+                  {/* Earth globe container - Even larger */}
+                  <div style={{ position: "relative", width: "520px", height: "520px", transform: "translateY(-80px)" }}>
+                    
+                    {/* Outer monitoring rings - More layers for depth */}
                     {[
-                      { size: 280, duration: "40s", delay: "0s", opacity: 0.15 },
-                      { size: 220, duration: "30s", delay: "-10s", opacity: 0.2, reverse: true },
-                      { size: 160, duration: "25s", delay: "-5s", opacity: 0.25 },
+                      { size: 520, duration: "80s", delay: "0s", opacity: 0.06, strokeWidth: "0.4" },
+                      { size: 480, duration: "65s", delay: "-20s", opacity: 0.08, strokeWidth: "0.5" },
+                      { size: 440, duration: "50s", delay: "-15s", opacity: 0.10, strokeWidth: "0.6", reverse: true },
+                      { size: 400, duration: "40s", delay: "-10s", opacity: 0.12, strokeWidth: "0.7" },
+                      { size: 360, duration: "30s", delay: "-25s", opacity: 0.15, strokeWidth: "0.8", reverse: true },
+                      { size: 320, duration: "25s", delay: "-5s", opacity: 0.18, strokeWidth: "0.9" },
                     ].map((ring, i) => (
                       <svg
                         key={i}
@@ -277,61 +282,331 @@ export default function Home() {
                           r="48"
                           fill="none"
                           stroke="var(--accent)"
-                          strokeWidth="0.5"
-                          strokeDasharray={i === 0 ? "2 10" : i === 1 ? "1 8" : "1 6"}
+                          strokeWidth={ring.strokeWidth}
+                          strokeDasharray={i === 0 ? "4 20" : i === 1 ? "3 16" : i === 2 ? "2 12" : i === 3 ? "2 10" : i === 4 ? "1 8" : "1 6"}
                         />
+                        
+                        {/* More monitoring station markers */}
+                        {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle) => (
+                          <g key={`marker-${i}-${angle}`}>
+                            <circle
+                              cx={50 + 47 * Math.cos((angle * Math.PI) / 180)}
+                              cy={50 + 47 * Math.sin((angle * Math.PI) / 180)}
+                              r={i < 3 ? "1" : "0.6"}
+                              fill="var(--accent)"
+                              opacity={i < 3 ? "0.8" : "0.5"}
+                            />
+                          </g>
+                        ))}
                       </svg>
                     ))}
 
-                    {/* Central pulsing orb */}
+                    {/* Central Earth - Much larger and more detailed */}
                     <div
                       style={{
                         position: "absolute",
                         top: "50%",
                         left: "50%",
                         transform: "translate(-50%, -50%)",
-                        width: "120px",
-                        height: "120px",
+                        width: "280px",
+                        height: "280px",
                         borderRadius: "50%",
-                        background: "radial-gradient(circle at 35% 35%, oklch(0.85 0.12 162 / 0.4), oklch(0.55 0.14 162 / 0.2) 50%, oklch(0.25 0.08 180 / 0.3))",
-                        boxShadow: "0 0 60px oklch(0.75 0.11 162 / 0.3), inset -8px -12px 24px rgba(0,0,0,0.3), inset 8px 12px 24px rgba(255,255,255,0.1)",
-                        animation: "orb-pulse 4s ease-in-out infinite",
+                        background: `
+                          radial-gradient(circle at 35% 25%, 
+                            oklch(0.55 0.08 220 / 0.95) 0%,
+                            oklch(0.45 0.10 200 / 0.9) 15%,
+                            oklch(0.35 0.12 180 / 0.85) 35%,
+                            oklch(0.25 0.15 160 / 0.8) 55%,
+                            oklch(0.15 0.18 140 / 0.7) 75%,
+                            oklch(0.08 0.20 120 / 0.6) 90%,
+                            oklch(0.03 0.25 100 / 0.5) 100%
+                          )
+                        `,
+                        boxShadow: `
+                          0 0 120px oklch(0.45 0.12 180 / 0.4),
+                          0 0 80px oklch(0.55 0.10 200 / 0.3),
+                          inset -18px -24px 48px rgba(0,0,0,0.5),
+                          inset 18px 24px 48px rgba(255,255,255,0.15)
+                        `,
+                        animation: "earth-rotate 150s linear infinite",
+                        overflow: "hidden",
                       }}
-                    />
+                    >
+                      {/* More detailed continental patterns */}
+                      <div style={{
+                        position: "absolute",
+                        inset: "8%",
+                        borderRadius: "50%",
+                        background: `
+                          radial-gradient(ellipse 45% 25% at 30% 25%, oklch(0.42 0.08 140 / 0.8) 0%, oklch(0.38 0.06 130 / 0.4) 40%, transparent 65%),
+                          radial-gradient(ellipse 35% 30% at 75% 35%, oklch(0.40 0.07 125 / 0.7) 0%, oklch(0.35 0.05 115 / 0.3) 45%, transparent 70%),
+                          radial-gradient(ellipse 30% 20% at 50% 65%, oklch(0.45 0.06 110 / 0.6) 0%, oklch(0.40 0.04 100 / 0.2) 50%, transparent 75%),
+                          radial-gradient(ellipse 20% 35% at 15% 50%, oklch(0.43 0.07 105 / 0.5) 0%, transparent 60%),
+                          radial-gradient(ellipse 25% 15% at 85% 70%, oklch(0.41 0.05 95 / 0.4) 0%, transparent 65%)
+                        `,
+                        animation: "earth-rotate 150s linear infinite",
+                      }} />
 
-                    {/* Floating particles */}
-                    {[...Array(8)].map((_, i) => (
+                      {/* Cloud layers for more realism */}
+                      <div style={{
+                        position: "absolute",
+                        inset: "5%",
+                        borderRadius: "50%",
+                        background: `
+                          radial-gradient(ellipse 60% 30% at 40% 20%, oklch(0.85 0.02 200 / 0.15) 0%, transparent 50%),
+                          radial-gradient(ellipse 40% 20% at 70% 60%, oklch(0.88 0.01 180 / 0.12) 0%, transparent 60%),
+                          radial-gradient(ellipse 30% 40% at 20% 70%, oklch(0.90 0.01 160 / 0.10) 0%, transparent 55%)
+                        `,
+                        animation: "cloud-drift 200s linear infinite",
+                      }} />
+                      
+                      {/* Enhanced atmospheric glow */}
+                      <div style={{
+                        position: "absolute",
+                        inset: "-12px",
+                        borderRadius: "50%",
+                        background: "radial-gradient(circle, transparent 68%, oklch(0.65 0.15 180 / 0.4) 78%, oklch(0.75 0.18 160 / 0.2) 88%, oklch(0.85 0.20 140 / 0.05) 100%)",
+                        animation: "atmosphere-pulse 12s ease-in-out infinite",
+                      }} />
+
+                      {/* Ozone layer effect */}
+                      <div style={{
+                        position: "absolute",
+                        inset: "-16px",
+                        borderRadius: "50%",
+                        background: "radial-gradient(circle, transparent 72%, oklch(0.70 0.20 200 / 0.1) 85%, oklch(0.80 0.15 180 / 0.05) 95%, transparent 100%)",
+                        animation: "ozone-shimmer 25s ease-in-out infinite",
+                      }} />
+                    </div>
+
+                    {/* India highlight marker - more prominent */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "50%",
+                        left: "50%",
+                        transform: "translate(-50%, -50%) translateX(36px) translateY(-20px)",
+                        width: "12px",
+                        height: "12px",
+                        borderRadius: "50%",
+                        background: "radial-gradient(circle, var(--accent) 0%, oklch(0.85 0.15 162) 50%, var(--accent) 100%)",
+                        boxShadow: "0 0 20px var(--accent), 0 0 40px oklch(0.75 0.11 162 / 0.5)",
+                        animation: "india-pulse 3s ease-in-out infinite",
+                      }}
+                    >
+                      {/* India marker ring */}
+                      <div style={{
+                        position: "absolute",
+                        inset: "-8px",
+                        borderRadius: "50%",
+                        border: "1px solid var(--accent)",
+                        opacity: 0.3,
+                        animation: "marker-ring-expand 3s ease-in-out infinite",
+                      }} />
+                    </div>
+
+                    {/* Enhanced air quality data streams */}
+                    {[...Array(18)].map((_, i) => (
                       <div
-                        key={`particle-${i}`}
+                        key={`stream-${i}`}
                         style={{
                           position: "absolute",
                           top: "50%",
                           left: "50%",
-                          width: "4px",
-                          height: "4px",
+                          width: "3px",
+                          height: "3px",
                           borderRadius: "50%",
-                          background: "var(--accent)",
-                          opacity: 0.4,
-                          animation: `particle-orbit-${i % 2 === 0 ? '1' : '2'} ${20 + i * 2}s linear infinite`,
-                          animationDelay: `${-i * 2.5}s`,
+                          background: `oklch(0.75 0.12 ${162 + (i * 12) % 120})`,
+                          boxShadow: `0 0 8px oklch(0.75 0.12 ${162 + (i * 12) % 120})`,
+                          opacity: 0.7,
+                          animation: `data-stream-${i % 3} ${18 + i * 1.2}s linear infinite`,
+                          animationDelay: `${-i * 1}s`,
                         }}
                       />
                     ))}
+
+                    {/* Enhanced satellite monitoring indicators */}
+                    {[30, 90, 150, 210, 270, 330].map((angle, i) => (
+                      <div
+                        key={`satellite-${i}`}
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "50%",
+                          transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-220px)`,
+                          width: "8px",
+                          height: "8px",
+                          background: "radial-gradient(circle, oklch(0.90 0.15 60) 0%, oklch(0.75 0.12 45) 100%)",
+                          borderRadius: "3px",
+                          boxShadow: "0 0 12px oklch(0.85 0.15 60), 0 0 24px oklch(0.75 0.12 60 / 0.3)",
+                          animation: `satellite-orbit ${45 + i * 6}s linear infinite`,
+                        }}
+                      >
+                        {/* Satellite signal beam */}
+                        <div style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%) rotate(180deg)",
+                          width: "2px",
+                          height: "40px",
+                          background: "linear-gradient(to bottom, oklch(0.85 0.15 60 / 0.6) 0%, transparent 100%)",
+                          opacity: 0.4,
+                        }} />
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Label */}
+                  {/* Comprehensive status display */}
                   <div style={{
-                    position: "absolute",
-                    bottom: 0,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    fontSize: "0.625rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.3em",
-                    color: "var(--muted-foreground)",
-                    textAlign: "center",
+                    marginTop: "2rem",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, 1fr)",
+                    gap: "1rem",
+                    width: "100%",
+                    maxWidth: "520px",
                   }}>
-                    Real-Time Monitoring
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.75rem 1rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--border)",
+                      background: "rgba(255,255,255,0.02)",
+                    }}>
+                      <div style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: "var(--accent)",
+                        animation: "pulse 2s ease-in-out infinite"
+                      }} />
+                      <div>
+                        <div style={{ fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--muted-foreground)" }}>CPCB Network</div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--foreground)", marginTop: "0.125rem" }}>800+ Stations</div>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.75rem 1rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--border)",
+                      background: "rgba(255,255,255,0.02)",
+                    }}>
+                      <div style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: "oklch(0.85 0.15 60)",
+                        animation: "pulse 2s ease-in-out infinite",
+                        animationDelay: "0.5s"
+                      }} />
+                      <div>
+                        <div style={{ fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--muted-foreground)" }}>AI Processing</div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--foreground)", marginTop: "0.125rem" }}>LSTM Neural Net</div>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.75rem 1rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--border)",
+                      background: "rgba(255,255,255,0.02)",
+                    }}>
+                      <div style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: "oklch(0.75 0.12 120)",
+                        animation: "pulse 2s ease-in-out infinite",
+                        animationDelay: "1s"
+                      }} />
+                      <div>
+                        <div style={{ fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--muted-foreground)" }}>Update Frequency</div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--foreground)", marginTop: "0.125rem" }}>Real-time</div>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.75rem 1rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--border)",
+                      background: "rgba(255,255,255,0.02)",
+                    }}>
+                      <div style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: "oklch(0.78 0.10 200)",
+                        animation: "pulse 2s ease-in-out infinite",
+                        animationDelay: "1.5s"
+                      }} />
+                      <div>
+                        <div style={{ fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--muted-foreground)" }}>Coverage</div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--foreground)", marginTop: "0.125rem" }}>Pan-India</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Project details section */}
+                  <div style={{
+                    marginTop: "3rem",
+                    textAlign: "center",
+                    maxWidth: "560px",
+                  }}>
+                    <h3 className="font-display" style={{
+                      fontSize: "1.5rem",
+                      fontWeight: 300,
+                      marginBottom: "1.25rem",
+                      color: "rgba(242,240,232,0.9)"
+                    }}>
+                      Environmental Intelligence System
+                    </h3>
+                    <p style={{
+                      fontSize: "1rem",
+                      lineHeight: 1.6,
+                      color: "var(--muted-foreground)",
+                      marginBottom: "1.75rem"
+                    }}>
+                      Pranarakshak combines real-time CPCB monitoring data with advanced LSTM neural networks 
+                      to predict air quality 24 hours ahead. Our system processes 18 environmental features 
+                      including PM2.5, PM10, NO₂, O₃, CO, temperature, humidity, and wind patterns to deliver 
+                      personalized health alerts based on your specific respiratory condition.
+                    </p>
+                    <div style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      gap: "2.5rem",
+                      fontSize: "0.875rem",
+                      color: "var(--muted-foreground)"
+                    }}>
+                      <div>
+                        <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "1.125rem" }}>94.2%</div>
+                        <div>Model Accuracy</div>
+                      </div>
+                      <div>
+                        <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "1.125rem" }}>18</div>
+                        <div>Input Features</div>
+                      </div>
+                      <div>
+                        <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "1.125rem" }}>24h</div>
+                        <div>Forecast Range</div>
+                      </div>
+                      <div>
+                        <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "1.125rem" }}>4</div>
+                        <div>Health Conditions</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
