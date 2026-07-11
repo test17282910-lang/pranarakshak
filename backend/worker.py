@@ -144,32 +144,44 @@ async def run_alert_check_cycle() -> dict:
             # 5. Dispatch alerts if enabled & permitted by rate-limiting (cooldown 12h)
             prediction_id = None  # Background check matches real-time sensor query
             
-            # Check SMS channel
+            # Check SMS channel (actually WhatsApp now)
             if user.get("sms_alerts_enabled", True) and user.get("phone"):
                 phone = user["phone"]
                 should_send, reason = await asyncio.to_thread(
-                    db.should_send_alert, user_id, "sms", tier, 12
+                    db.should_send_alert, user_id, "whatsapp", tier, 12
                 )
                 
                 if should_send:
-                    sms_text = build_alert_sms_text(
-                        name=name,
-                        tier=tier,
-                        raw_aqi=current_aqi,
-                        effective_aqi=effective_aqi,
-                        condition=condition,
-                        symptoms=symptoms
-                    )
-                    status, provider_id = send_sms(phone, sms_text)
+                    # Use detailed WhatsApp format instead of SMS
+                    whatsapp_text = f"""🚨 Pranarakshak Alert
+
+AQI {round(effective_aqi)} crossed your threshold ({threshold})
+
+{tier.upper()} Risk Level for {condition.upper()}
+
+📍 Current AQI: {round(raw_aqi)}
+🔴 Your Risk Level: {round(effective_aqi)}
+⚕️ Health Impact: {condition} ({severity})
+
+🛡️ Immediate Actions:
+• {precautions[0]['text'] if precautions else 'Stay indoors'}
+• {precautions[1]['text'] if len(precautions) > 1 else 'Use air purifier'}
+
+📱 View full details: https://pranarakshak-six.vercel.app/dashboard
+
+Stay safe! 💙 Pranarakshak"""
+
+                    from alerts import send_whatsapp
+                    status, provider_id = send_whatsapp(phone, whatsapp_text)
                     
                     # Log dispatch details
                     alert_log = {
                         "user_id": user_id,
                         "alert_tier": tier,
-                        "channel": "sms",
+                        "channel": "whatsapp",
                         "status": status,
                         "suppressed_reason": None if status == "sent" else provider_id,
-                        "alert_message": sms_text,
+                        "alert_message": whatsapp_text,
                         "precautions": str([p["text"] for p in precautions[:3]]),
                         "provider_id": provider_id if status == "sent" else None
                     }
@@ -178,7 +190,7 @@ async def run_alert_check_cycle() -> dict:
                         alerts_sent += 1
                 else:
                     # Suppressed due to cooldown/rate limits
-                    logger.info(f"SMS suppressed for user {name} due to: {reason}")
+                    logger.info(f"WhatsApp suppressed for user {name} due to: {reason}")
                     
             # Check Email channel
             if user.get("email_alerts_enabled", True) and user.get("email"):

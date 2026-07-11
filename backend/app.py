@@ -1232,6 +1232,52 @@ async def auto_alerts_check() -> dict:
         }
 
 
+@app.get("/indoor-recommendations/{user_id}", tags=["Smart Features"])
+async def get_indoor_recommendations_api(user_id: str) -> dict:
+    """
+    🏠 Smart Indoor Air Quality Recommendations
+    Provides personalized advice on when to open windows, run air purifiers, etc.
+    """
+    try:
+        import asyncio
+        from indoor_recommendations import get_indoor_recommendations, get_24h_indoor_forecast, get_optimal_ventilation_windows
+        from data_fetcher import get_readings_for_location
+        
+        # Get user details
+        user = await asyncio.to_thread(db.get_user_by_id, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        lat = float(user["last_known_lat"])
+        lon = float(user["last_known_lon"])
+        condition = user.get("condition", "other")
+        severity = user.get("severity", "moderate")
+        
+        # Get current AQI
+        df, _, current_aqi = await asyncio.to_thread(get_readings_for_location, lat, lon)
+        current_aqi = current_aqi or 100
+        
+        # Generate recommendations
+        recommendations = get_indoor_recommendations(current_aqi, current_aqi, condition, severity)
+        
+        # Get 24h forecast
+        forecast = await get_24h_indoor_forecast(lat, lon)
+        optimal_times = get_optimal_ventilation_windows(forecast)
+        
+        return {
+            "user_id": user_id,
+            "current_aqi": round(current_aqi, 1),
+            "recommendations": recommendations,
+            "hourly_forecast": forecast,
+            "optimal_ventilation_times": optimal_times,
+            "generated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Indoor recommendations failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate recommendations: {str(e)}")
+
+
 @app.get("/users/{user_id}/alerts", tags=["Alerts"])
 def get_user_alerts(user_id: str, limit: int = 20):
     """Retrieve historical alert log dispatches for a user."""
