@@ -790,8 +790,22 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
     forecast_time = datetime.now(timezone.utc) + timedelta(hours=24)
     now_str = datetime.now(timezone.utc).isoformat()
 
-    # ── Step 1: Fetch live data (blocking network I/O — run in thread) ────────
-    df, fetch_source, live_aqi = await asyncio.to_thread(get_readings_for_location, payload.lat, payload.lon)
+    # ── Step 1: Fetch live data (improved accuracy system) ──────────────────
+    from accurate_aqi import get_accurate_current_aqi
+    try:
+        # Get highly accurate current AQI from multiple sources
+        accurate_current_aqi, accuracy_report = await asyncio.to_thread(get_accurate_current_aqi, payload.lat, payload.lon)
+        logger.info(f"🎯 Accurate AQI: {accurate_current_aqi} (sources: {accuracy_report.get('accuracy_info', {}).get('reliable_sources', 0)})")
+    except Exception as e:
+        logger.warning(f"Accurate AQI failed, falling back to original system: {e}")
+        accurate_current_aqi = None
+        accuracy_report = None
+    
+    # Fallback to original data fetching for historical LSTM data
+    df, fetch_source, fallback_live_aqi = await asyncio.to_thread(get_readings_for_location, payload.lat, payload.lon)
+    
+    # Use accurate AQI if available, otherwise fallback
+    live_aqi = accurate_current_aqi if accurate_current_aqi is not None else fallback_live_aqi
 
     # ── Step 2: Data quality tiering ─────────────────────────────────────────
     df_ready, quality_tier = assess_data_quality(df)
@@ -1234,6 +1248,39 @@ async def auto_alerts_check() -> dict:
             "message": f"Alert check failed: {str(e)}",
             "results": None
         }
+
+
+@app.get("/debug/aqi-accuracy/{user_id}", tags=["Debug"])
+async def debug_aqi_accuracy(user_id: str) -> dict:
+    """
+    🎯 AQI Accuracy Analyzer - See exactly which sources and stations are used.
+    Shows all available AQI readings with reliability scores for troubleshooting.
+    """
+    try:
+        import asyncio
+        from accurate_aqi import get_accurate_current_aqi
+        
+        # Get user location
+        user = await asyncio.to_thread(db.get_user_by_id, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        lat = float(user["last_known_lat"]) if user["last_known_lat"] is not None else 17.385044
+        lon = float(user["last_known_lon"]) if user["last_known_lon"] is not None else 78.486671
+        
+        # Get accurate AQI with full transparency
+        accurate_aqi, accuracy_report = await asyncio.to_thread(get_accurate_current_aqi, lat, lon)
+        
+        return {
+            "user_location": {"lat": lat, "lon": lon, "is_default": user["last_known_lat"] is None},
+            "accurate_aqi": accurate_aqi,
+            "accuracy_report": accuracy_report,
+            "recommendation": "Click 'Update Location' button to get AQI for your exact coordinates" if user["last_known_lat"] is None else "Location-specific AQI data"
+        }
+        
+    except Exception as e:
+        logger.error(f"AQI accuracy debug failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
 
 
 @app.get("/debug/data-sources/{user_id}", tags=["Debug"])
