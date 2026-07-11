@@ -160,7 +160,7 @@ export default function Home() {
       localStorage.setItem("aqi_user_id", data.user_id);
       setRegisteredUserId(data.user_id);
       setShowModal(true);
-      setFormData({ name: "", email: "", phone: "", password: "", condition: "", severity: "moderate", lat: null, lon: null, personalized_issue: "" });
+      setFormData({ name: "", email: "", phone: "", password: "", condition: "", severity: "moderate", lat: null, lon: null, personalized_issue: "", alert_threshold: 100 });
       setSelectedSymptoms([]); setSearchQuery(""); setLocationStatus({ message: "", type: null });
     } catch (err: any) {
       setFeedback({ message: err.message, isError: true });
