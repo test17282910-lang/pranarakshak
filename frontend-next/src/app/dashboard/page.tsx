@@ -380,9 +380,6 @@ export default function Dashboard() {
     );
   };
 
-  const tierHue = prediction ? getTierHue(naqi_air_quality_tier(predictedAqi)) : "162";
-  const tierColor = prediction ? getTierColor(naqi_air_quality_tier(predictedAqi)) : "oklch(0.75 0.11 162)";
-
   // ── Render: Login Screen ───────────────────────────────────────────────────
   if (!userId || (!loading && !profile && !error)) {
     return (
@@ -539,6 +536,10 @@ export default function Dashboard() {
   const currentAqi   = prediction?.current_aqi ?? 0;
   const predictedAqi = prediction?.predicted_aqi_adjusted ?? 0;
   const pct          = getAqiPercent(predictedAqi); // Use predicted for main calculations
+
+  // Derived color/hue values for styling
+  const tierHue = prediction ? getTierHue(naqi_air_quality_tier(predictedAqi)) : "162";
+  const tierColor = prediction ? getTierColor(naqi_air_quality_tier(predictedAqi)) : "oklch(0.75 0.11 162)";
 
   // Derive comfort ring values from predicted AQI
   const pm25Score  = prediction ? Math.max(0, 100 - getAqiPercent(prediction.predicted_aqi_adjusted)) : 50;
