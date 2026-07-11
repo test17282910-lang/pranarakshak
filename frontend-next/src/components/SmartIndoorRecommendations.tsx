@@ -110,8 +110,26 @@ export default function SmartIndoorRecommendations({ userId, currentAqi }: Smart
         <div className="overline" style={{ marginBottom: "1rem" }}>
           <span className="overline-dash" />🏠 Smart Indoor Air Quality
         </div>
-        <div style={{ textAlign: "center", color: "var(--muted-foreground)", fontSize: "0.875rem" }}>
-          Failed to load indoor recommendations: {error}
+        <div style={{ textAlign: "center", padding: "2rem" }}>
+          <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>🏠</div>
+          <div style={{ color: "var(--muted-foreground)", fontSize: "0.875rem", marginBottom: "1rem" }}>
+            Unable to load indoor recommendations: {error}
+          </div>
+          <button
+            onClick={fetchRecommendations}
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid var(--border)",
+              borderRadius: "0.5rem",
+              padding: "0.5rem 1rem",
+              fontSize: "0.75rem",
+              color: "var(--foreground)",
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+          >
+            🔄 Try Again
+          </button>
         </div>
       </div>
     );

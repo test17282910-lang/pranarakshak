@@ -1252,8 +1252,9 @@ async def get_indoor_recommendations_api(user_id: str) -> dict:
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        lat = float(user["last_known_lat"])
-        lon = float(user["last_known_lon"])
+        # Handle missing location gracefully - use default Hyderabad coordinates
+        lat = float(user["last_known_lat"]) if user["last_known_lat"] is not None else 17.385044
+        lon = float(user["last_known_lon"]) if user["last_known_lon"] is not None else 78.486671
         condition = user.get("condition", "other")
         severity = user.get("severity", "moderate")
         
