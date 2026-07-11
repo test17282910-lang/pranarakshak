@@ -1208,6 +1208,30 @@ async def trigger_alerts_check(background_tasks: BackgroundTasks) -> dict:
     }
 
 
+@app.get("/alerts/auto-check", tags=["Alerts"])
+async def auto_alerts_check() -> dict:
+    """
+    Auto-trigger alert checks (designed for external cron services like cron-job.org).
+    This endpoint runs the alert cycle and returns results immediately.
+    """
+    try:
+        logger.info("🔔 Auto alert check triggered via GET endpoint")
+        from worker import run_alert_check_cycle
+        results = await run_alert_check_cycle()
+        return {
+            "status": "completed",
+            "message": "Alert check cycle completed successfully",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Auto alert check failed: {e}")
+        return {
+            "status": "failed", 
+            "message": f"Alert check failed: {str(e)}",
+            "results": None
+        }
+
+
 @app.get("/users/{user_id}/alerts", tags=["Alerts"])
 def get_user_alerts(user_id: str, limit: int = 20):
     """Retrieve historical alert log dispatches for a user."""
