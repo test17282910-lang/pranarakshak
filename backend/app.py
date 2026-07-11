@@ -191,6 +191,37 @@ class LoginRequest(BaseModel):
     password: Optional[str] = Field(None, description="Required for email/phone login; omit for UUID-only lookup")
 
 
+class MedicationRequest(BaseModel):
+    user_id: str
+    medication_name: str = Field(..., description="Name of medication (e.g., 'Salbutamol Inhaler', 'Budesonide')")
+    medication_type: str = Field(..., description="Type: 'rescue_inhaler', 'preventer_inhaler', 'nebulizer', 'oral', 'other'")
+    dosage: str = Field(..., description="Dosage instructions (e.g., '2 puffs', '100mcg')")
+    frequency: str = Field(..., description="Frequency: 'as_needed', 'daily', 'twice_daily', 'thrice_daily', 'custom'")
+    custom_schedule: Optional[list[str]] = Field(None, description="Custom times if frequency is 'custom' (e.g., ['08:00', '20:00'])")
+    aqi_trigger: Optional[int] = Field(None, description="AQI threshold to trigger reminders (e.g., 100)")
+    condition_specific: bool = Field(True, description="Whether to adjust reminders based on condition severity")
+
+
+class EmergencyContactRequest(BaseModel):
+    user_id: str
+    contact_name: str = Field(..., min_length=2, max_length=100)
+    relationship: str = Field(..., description="Relationship: 'spouse', 'parent', 'child', 'sibling', 'friend', 'doctor', 'caregiver'")
+    phone: Optional[str] = Field(None, max_length=20)
+    email: Optional[EmailStr] = None
+    priority: int = Field(1, ge=1, le=5, description="Priority level (1=highest, 5=lowest)")
+    notify_on_critical: bool = Field(True, description="Notify during critical AQI events")
+    notify_on_missed_checkin: bool = Field(False, description="Notify if user doesn't check app during high AQI")
+
+
+class FamilyGroupRequest(BaseModel):
+    group_name: str = Field(..., min_length=2, max_length=100)
+    creator_user_id: str
+    description: Optional[str] = Field(None, max_length=500)
+    shared_alert_threshold: int = Field(100, ge=50, le=500)
+    auto_share_location: bool = Field(True, description="Share location updates with family")
+    emergency_mode: bool = Field(True, description="Enable emergency cascading alerts")
+
+
 class LocationUpdateRequest(BaseModel):
     user_id: str
     lat: float = Field(..., ge=-90, le=90)
@@ -1396,4 +1427,580 @@ def get_user_alerts(user_id: str, limit: int = 20):
     except Exception as exc:
         logger.error(f"Error fetching alerts for user {user_id}: {exc}")
         raise HTTPException(status_code=500, detail="Database error while fetching alert history.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 3: MEDICATION REMINDER INTEGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/medications", tags=["Smart Features"])
+def add_medication(payload: MedicationRequest):
+    """Add a medication reminder for a user."""
+    try:
+        # Validate user exists
+        user = db.get_user_by_id(payload.user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Insert medication
+        medication_id = db.add_medication(
+            user_id=payload.user_id,
+            medication_name=payload.medication_name,
+            medication_type=payload.medication_type,
+            dosage=payload.dosage,
+            frequency=payload.frequency,
+            custom_schedule=payload.custom_schedule or [],
+            aqi_trigger=payload.aqi_trigger,
+            condition_specific=payload.condition_specific
+        )
+        
+        logger.info(f"Medication added for user {payload.user_id}: {payload.medication_name}")
+        return {
+            "status": "success",
+            "medication_id": medication_id,
+            "message": f"Medication '{payload.medication_name}' added successfully"
+        }
+    except Exception as exc:
+        logger.error(f"Error adding medication: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to add medication: {str(exc)}")
+
+
+@app.get("/users/{user_id}/medications", tags=["Smart Features"])
+def get_user_medications(user_id: str):
+    """Get all medications for a user."""
+    try:
+        user = db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        medications = db.get_user_medications(user_id)
+        return {
+            "user_id": user_id,
+            "medications": medications,
+            "count": len(medications)
+        }
+    except Exception as exc:
+        logger.error(f"Error fetching medications for user {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch medications")
+
+
+@app.put("/medications/{medication_id}", tags=["Smart Features"])
+def update_medication(medication_id: str, payload: MedicationRequest):
+    """Update a medication."""
+    try:
+        success = db.update_medication(
+            medication_id=medication_id,
+            medication_name=payload.medication_name,
+            medication_type=payload.medication_type,
+            dosage=payload.dosage,
+            frequency=payload.frequency,
+            custom_schedule=payload.custom_schedule or [],
+            aqi_trigger=payload.aqi_trigger,
+            condition_specific=payload.condition_specific
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Medication not found")
+        
+        return {"status": "success", "message": "Medication updated successfully"}
+    except Exception as exc:
+        logger.error(f"Error updating medication {medication_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to update medication")
+
+
+@app.delete("/medications/{medication_id}", tags=["Smart Features"])
+def delete_medication(medication_id: str):
+    """Delete a medication."""
+    try:
+        success = db.delete_medication(medication_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Medication not found")
+        
+        return {"status": "success", "message": "Medication deleted successfully"}
+    except Exception as exc:
+        logger.error(f"Error deleting medication {medication_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete medication")
+
+
+@app.post("/medications/check-reminders/{user_id}", tags=["Smart Features"])
+async def check_medication_reminders(user_id: str):
+    """Check if medication reminders should be sent based on current AQI."""
+    try:
+        import asyncio
+        
+        user = await asyncio.to_thread(db.get_user_by_id, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get user's current location and AQI
+        lat, lon = user.get("last_known_lat"), user.get("last_known_lon")
+        if not lat or not lon:
+            return {"status": "skipped", "reason": "No location available"}
+        
+        # Get current AQI using accurate system
+        from accurate_aqi import get_accurate_current_aqi
+        try:
+            current_aqi, accuracy_report = await asyncio.to_thread(get_accurate_current_aqi, lat, lon)
+        except Exception:
+            # Fallback to prediction endpoint
+            from data_fetcher import get_readings_for_location
+            df, fetch_source, fallback_live_aqi = await asyncio.to_thread(get_readings_for_location, lat, lon)
+            current_aqi = fallback_live_aqi or 100
+        
+        # Get user's medications
+        medications = await asyncio.to_thread(db.get_user_medications, user_id)
+        
+        reminders_sent = []
+        for med in medications:
+            # Check if medication should trigger based on AQI
+            aqi_trigger = med.get("aqi_trigger")
+            if aqi_trigger and current_aqi >= aqi_trigger:
+                # Check if reminder already sent recently (within 6 hours)
+                recent_reminder = await asyncio.to_thread(
+                    db.check_recent_medication_reminder, 
+                    med["id"], hours=6
+                )
+                
+                if not recent_reminder:
+                    # Send medication reminder
+                    reminder_sent = await send_medication_reminder(user, med, current_aqi)
+                    if reminder_sent:
+                        reminders_sent.append({
+                            "medication": med["medication_name"],
+                            "trigger_aqi": aqi_trigger,
+                            "current_aqi": current_aqi
+                        })
+        
+        return {
+            "status": "completed",
+            "user_id": user_id,
+            "current_aqi": current_aqi,
+            "reminders_sent": reminders_sent,
+            "count": len(reminders_sent)
+        }
+        
+    except Exception as exc:
+        logger.error(f"Error checking medication reminders for {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to check medication reminders")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 4: FAMILY GROUP ALERTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/family-groups", tags=["Smart Features"])
+def create_family_group(payload: FamilyGroupRequest):
+    """Create a new family group."""
+    try:
+        # Validate creator exists
+        user = db.get_user_by_id(payload.creator_user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Creator user not found")
+        
+        group_id = db.create_family_group(
+            group_name=payload.group_name,
+            creator_user_id=payload.creator_user_id,
+            description=payload.description,
+            shared_alert_threshold=payload.shared_alert_threshold,
+            auto_share_location=payload.auto_share_location,
+            emergency_mode=payload.emergency_mode
+        )
+        
+        # Add creator as admin member
+        db.add_family_member(group_id, payload.creator_user_id, role="admin")
+        
+        logger.info(f"Family group created: {payload.group_name} by user {payload.creator_user_id}")
+        return {
+            "status": "success",
+            "group_id": group_id,
+            "message": f"Family group '{payload.group_name}' created successfully"
+        }
+    except Exception as exc:
+        logger.error(f"Error creating family group: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to create family group: {str(exc)}")
+
+
+@app.post("/family-groups/{group_id}/members", tags=["Smart Features"])
+def add_family_member(group_id: str, user_id: str, role: str = "member"):
+    """Add a member to a family group."""
+    try:
+        # Validate group exists
+        group = db.get_family_group(group_id)
+        if not group:
+            raise HTTPException(status_code=404, detail="Family group not found")
+        
+        # Validate user exists
+        user = db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Add member
+        success = db.add_family_member(group_id, user_id, role)
+        if not success:
+            raise HTTPException(status_code=400, detail="User is already a member of this group")
+        
+        return {
+            "status": "success",
+            "message": f"User added to family group as {role}"
+        }
+    except Exception as exc:
+        logger.error(f"Error adding family member: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to add family member")
+
+
+@app.get("/users/{user_id}/family-groups", tags=["Smart Features"])
+def get_user_family_groups(user_id: str):
+    """Get all family groups for a user."""
+    try:
+        user = db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        groups = db.get_user_family_groups(user_id)
+        return {
+            "user_id": user_id,
+            "family_groups": groups,
+            "count": len(groups)
+        }
+    except Exception as exc:
+        logger.error(f"Error fetching family groups for user {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch family groups")
+
+
+@app.get("/family-groups/{group_id}/members", tags=["Smart Features"])
+def get_family_group_members(group_id: str):
+    """Get all members of a family group."""
+    try:
+        group = db.get_family_group(group_id)
+        if not group:
+            raise HTTPException(status_code=404, detail="Family group not found")
+        
+        members = db.get_family_group_members(group_id)
+        return {
+            "group_id": group_id,
+            "group_name": group["group_name"],
+            "members": members,
+            "count": len(members)
+        }
+    except Exception as exc:
+        logger.error(f"Error fetching family group members for {group_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch family group members")
+
+
+@app.post("/family-groups/{group_id}/alert", tags=["Smart Features"])
+async def send_family_alert(group_id: str, triggered_by_user: str, alert_type: str, message: str):
+    """Send alert to all family group members."""
+    try:
+        import asyncio
+        
+        # Validate group exists
+        group = await asyncio.to_thread(db.get_family_group, group_id)
+        if not group:
+            raise HTTPException(status_code=404, detail="Family group not found")
+        
+        # Get all active members
+        members = await asyncio.to_thread(db.get_family_group_members, group_id)
+        
+        notifications_sent = 0
+        for member in members:
+            if member["user_id"] != triggered_by_user and member["notifications_enabled"]:
+                # Send notification to family member
+                success = await send_family_notification(member, message, alert_type)
+                if success:
+                    notifications_sent += 1
+        
+        # Log the family alert
+        await asyncio.to_thread(db.log_family_alert, 
+                              group_id=group_id,
+                              triggered_by_user=triggered_by_user,
+                              alert_type=alert_type,
+                              message=message,
+                              members_notified=notifications_sent)
+        
+        return {
+            "status": "success",
+            "group_id": group_id,
+            "alert_type": alert_type,
+            "members_notified": notifications_sent,
+            "message": "Family alert sent successfully"
+        }
+        
+    except Exception as exc:
+        logger.error(f"Error sending family alert: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to send family alert")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FEATURE 8: EMERGENCY CONTACT AUTO-ALERT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/emergency-contacts", tags=["Smart Features"])
+def add_emergency_contact(payload: EmergencyContactRequest):
+    """Add an emergency contact for a user."""
+    try:
+        # Validate user exists
+        user = db.get_user_by_id(payload.user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        contact_id = db.add_emergency_contact(
+            user_id=payload.user_id,
+            contact_name=payload.contact_name,
+            relationship=payload.relationship,
+            phone=payload.phone,
+            email=payload.email,
+            priority=payload.priority,
+            notify_on_critical=payload.notify_on_critical,
+            notify_on_missed_checkin=payload.notify_on_missed_checkin
+        )
+        
+        logger.info(f"Emergency contact added for user {payload.user_id}: {payload.contact_name}")
+        return {
+            "status": "success",
+            "contact_id": contact_id,
+            "message": f"Emergency contact '{payload.contact_name}' added successfully"
+        }
+    except Exception as exc:
+        logger.error(f"Error adding emergency contact: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to add emergency contact: {str(exc)}")
+
+
+@app.get("/users/{user_id}/emergency-contacts", tags=["Smart Features"])
+def get_user_emergency_contacts(user_id: str):
+    """Get all emergency contacts for a user."""
+    try:
+        user = db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        contacts = db.get_user_emergency_contacts(user_id)
+        return {
+            "user_id": user_id,
+            "emergency_contacts": contacts,
+            "count": len(contacts)
+        }
+    except Exception as exc:
+        logger.error(f"Error fetching emergency contacts for user {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch emergency contacts")
+
+
+@app.put("/emergency-contacts/{contact_id}", tags=["Smart Features"])
+def update_emergency_contact(contact_id: str, payload: EmergencyContactRequest):
+    """Update an emergency contact."""
+    try:
+        success = db.update_emergency_contact(
+            contact_id=contact_id,
+            contact_name=payload.contact_name,
+            relationship=payload.relationship,
+            phone=payload.phone,
+            email=payload.email,
+            priority=payload.priority,
+            notify_on_critical=payload.notify_on_critical,
+            notify_on_missed_checkin=payload.notify_on_missed_checkin
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Emergency contact not found")
+        
+        return {"status": "success", "message": "Emergency contact updated successfully"}
+    except Exception as exc:
+        logger.error(f"Error updating emergency contact {contact_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to update emergency contact")
+
+
+@app.delete("/emergency-contacts/{contact_id}", tags=["Smart Features"])
+def delete_emergency_contact(contact_id: str):
+    """Delete an emergency contact."""
+    try:
+        success = db.delete_emergency_contact(contact_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Emergency contact not found")
+        
+        return {"status": "success", "message": "Emergency contact deleted successfully"}
+    except Exception as exc:
+        logger.error(f"Error deleting emergency contact {contact_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete emergency contact")
+
+
+@app.post("/emergency-contacts/notify/{user_id}", tags=["Smart Features"])
+async def trigger_emergency_notifications(user_id: str, alert_tier: str, current_aqi: int):
+    """Trigger emergency contact notifications for critical AQI events."""
+    try:
+        import asyncio
+        
+        user = await asyncio.to_thread(db.get_user_by_id, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Only trigger for critical alerts
+        if alert_tier.lower() != "critical":
+            return {
+                "status": "skipped", 
+                "reason": f"Alert tier '{alert_tier}' is not critical"
+            }
+        
+        # Get emergency contacts
+        contacts = await asyncio.to_thread(db.get_user_emergency_contacts, user_id)
+        
+        notifications_sent = 0
+        for contact in contacts:
+            if contact["notify_on_critical"]:
+                success = await send_emergency_notification(user, contact, current_aqi)
+                if success:
+                    notifications_sent += 1
+        
+        return {
+            "status": "completed",
+            "user_id": user_id,
+            "alert_tier": alert_tier,
+            "current_aqi": current_aqi,
+            "notifications_sent": notifications_sent,
+            "message": f"Emergency notifications sent to {notifications_sent} contacts"
+        }
+        
+    except Exception as exc:
+        logger.error(f"Error triggering emergency notifications for {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to trigger emergency notifications")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS FOR NEW FEATURES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def send_medication_reminder(user: dict, medication: dict, current_aqi: int) -> bool:
+    """Send medication reminder via WhatsApp/SMS."""
+    try:
+        from alerts import send_whatsapp
+        
+        phone = user.get("phone")
+        if not phone:
+            return False
+        
+        medication_name = medication["medication_name"]
+        dosage = medication["dosage"]
+        user_name = user.get("name", "Patient")
+        
+        message = f"""💊 MEDICATION REMINDER - Pranarakshak
+
+Hello {user_name}!
+
+High AQI Alert: {current_aqi} (Threshold: {medication['aqi_trigger']})
+
+Please take your medication:
+📋 {medication_name}
+💉 Dosage: {dosage}
+
+This will help protect your respiratory health during poor air quality conditions.
+
+Take care and stay safe! 🌬️"""
+        
+        status, msg_id = send_whatsapp(phone, message)
+        
+        # Log the reminder
+        if status == "sent":
+            db.log_medication_reminder(
+                medication_id=medication["id"],
+                user_id=user["id"],
+                reminder_type="aqi_triggered",
+                aqi_at_time=current_aqi,
+                message_sent=message,
+                channel="whatsapp",
+                status="sent"
+            )
+        
+        logger.info(f"Medication reminder sent to {phone}: {status}")
+        return status == "sent"
+        
+    except Exception as exc:
+        logger.error(f"Error sending medication reminder: {exc}")
+        return False
+
+
+async def send_family_notification(member: dict, message: str, alert_type: str) -> bool:
+    """Send notification to family group member."""
+    try:
+        from alerts import send_whatsapp
+        
+        # Get member's user details
+        user = db.get_user_by_id(member["user_id"])
+        if not user:
+            return False
+        
+        phone = user.get("phone")
+        if not phone:
+            return False
+        
+        family_message = f"""👨‍👩‍👧‍👦 FAMILY ALERT - Pranarakshak
+
+{message}
+
+Alert Type: {alert_type.replace('_', ' ').title()}
+Family Member: {user.get('name', 'Family Member')}
+
+Please check on your family member and ensure they are safe.
+
+Stay connected! 💙"""
+        
+        status, msg_id = send_whatsapp(phone, family_message)
+        logger.info(f"Family notification sent to {phone}: {status}")
+        return status == "sent"
+        
+    except Exception as exc:
+        logger.error(f"Error sending family notification: {exc}")
+        return False
+
+
+async def send_emergency_notification(user: dict, contact: dict, current_aqi: int) -> bool:
+    """Send emergency notification to emergency contact."""
+    try:
+        from alerts import send_whatsapp, send_email
+        
+        user_name = user.get("name", "Patient")
+        contact_name = contact["contact_name"]
+        relationship = contact["relationship"]
+        
+        emergency_message = f"""🚨 EMERGENCY ALERT - Pranarakshak
+
+CRITICAL AIR QUALITY ALERT
+
+Patient: {user_name}
+Current AQI: {current_aqi} (CRITICAL LEVEL)
+
+{user_name} is experiencing dangerous air quality conditions that pose immediate health risks for their respiratory condition.
+
+As their emergency contact ({relationship}), please:
+1. Check on {user_name} immediately
+2. Ensure they are indoors with windows closed
+3. Verify they have taken their rescue medications
+4. Monitor for breathing difficulties
+
+This is an automated emergency alert.
+
+Emergency Contact: {contact_name}
+Priority Level: {contact['priority']}
+
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+        
+        notifications_sent = False
+        
+        # Send WhatsApp if phone available
+        if contact.get("phone"):
+            status, msg_id = send_whatsapp(contact["phone"], emergency_message)
+            if status == "sent":
+                notifications_sent = True
+        
+        # Send Email if email available  
+        if contact.get("email"):
+            subject = f"🚨 EMERGENCY: Critical AQI Alert for {user_name}"
+            html_message = emergency_message.replace('\n', '<br>')
+            status, msg_id = send_email(contact["email"], subject, f"<html><body><pre>{html_message}</pre></body></html>")
+            if status == "sent":
+                notifications_sent = True
+        
+        logger.info(f"Emergency notification sent to {contact_name}: {notifications_sent}")
+        return notifications_sent
+        
+    except Exception as exc:
+        logger.error(f"Error sending emergency notification: {exc}")
+        return False
 

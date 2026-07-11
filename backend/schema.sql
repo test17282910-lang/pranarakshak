@@ -480,6 +480,145 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
 -- ══════════════════════════════════════════════════════════════
+-- NEW FEATURE TABLES: Medication Reminders, Family Groups, Emergency Contacts
+-- ══════════════════════════════════════════════════════════════
+
+-- TABLE: medications
+CREATE TABLE IF NOT EXISTS medications (
+    id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id              UUID REFERENCES users(id) ON DELETE CASCADE,
+    medication_name      VARCHAR(200) NOT NULL,
+    medication_type      VARCHAR(50) NOT NULL,
+    dosage               VARCHAR(100) NOT NULL,
+    frequency            VARCHAR(30) NOT NULL,
+    custom_schedule      VARCHAR(20)[] DEFAULT '{}',
+    aqi_trigger          INTEGER,
+    condition_specific   BOOLEAN DEFAULT TRUE,
+    active               BOOLEAN DEFAULT TRUE,
+    created_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_medications_user ON medications (user_id, active);
+CREATE INDEX IF NOT EXISTS idx_medications_aqi_trigger ON medications (aqi_trigger);
+
+-- TABLE: family_groups  
+CREATE TABLE IF NOT EXISTS family_groups (
+    id                     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_name             VARCHAR(100) NOT NULL,
+    creator_user_id        UUID REFERENCES users(id) ON DELETE CASCADE,
+    description            TEXT,
+    shared_alert_threshold INTEGER DEFAULT 100,
+    auto_share_location    BOOLEAN DEFAULT TRUE,
+    emergency_mode         BOOLEAN DEFAULT TRUE,
+    active                 BOOLEAN DEFAULT TRUE,
+    created_at             TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at             TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_family_groups_creator ON family_groups (creator_user_id);
+CREATE INDEX IF NOT EXISTS idx_family_groups_active ON family_groups (active);
+
+-- TABLE: family_group_members
+CREATE TABLE IF NOT EXISTS family_group_members (
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_id         UUID REFERENCES family_groups(id) ON DELETE CASCADE,
+    user_id          UUID REFERENCES users(id) ON DELETE CASCADE,
+    role             VARCHAR(30) DEFAULT 'member', -- 'admin', 'member', 'guardian'
+    joined_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    notifications_enabled BOOLEAN DEFAULT TRUE,
+    emergency_priority INTEGER DEFAULT 3
+);
+
+CREATE INDEX IF NOT EXISTS idx_family_members_group ON family_group_members (group_id);
+CREATE INDEX IF NOT EXISTS idx_family_members_user ON family_group_members (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_family_members_unique ON family_group_members (group_id, user_id);
+
+-- TABLE: emergency_contacts
+CREATE TABLE IF NOT EXISTS emergency_contacts (
+    id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id                  UUID REFERENCES users(id) ON DELETE CASCADE,
+    contact_name             VARCHAR(100) NOT NULL,
+    relationship             VARCHAR(30) NOT NULL,
+    phone                    VARCHAR(20),
+    email                    VARCHAR(150),
+    priority                 INTEGER DEFAULT 1,
+    notify_on_critical       BOOLEAN DEFAULT TRUE,
+    notify_on_missed_checkin BOOLEAN DEFAULT FALSE,
+    active                   BOOLEAN DEFAULT TRUE,
+    created_at               TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at               TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_emergency_contacts_user ON emergency_contacts (user_id, priority);
+CREATE INDEX IF NOT EXISTS idx_emergency_contacts_active ON emergency_contacts (active);
+
+-- TABLE: medication_reminders (log of sent reminders)
+CREATE TABLE IF NOT EXISTS medication_reminders (
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    medication_id    UUID REFERENCES medications(id) ON DELETE CASCADE,
+    user_id          UUID REFERENCES users(id) ON DELETE CASCADE,
+    reminder_type    VARCHAR(30) NOT NULL, -- 'scheduled', 'aqi_triggered', 'emergency'
+    aqi_at_time      INTEGER,
+    message_sent     TEXT,
+    channel          VARCHAR(20) NOT NULL, -- 'whatsapp', 'sms', 'email'
+    status           VARCHAR(20) DEFAULT 'sent',
+    sent_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_med_reminders_user ON medication_reminders (user_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_med_reminders_medication ON medication_reminders (medication_id);
+
+-- TABLE: family_alerts (log of family group notifications)
+CREATE TABLE IF NOT EXISTS family_alerts (
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_id         UUID REFERENCES family_groups(id) ON DELETE CASCADE,
+    triggered_by_user UUID REFERENCES users(id) ON DELETE CASCADE,
+    alert_type       VARCHAR(30) NOT NULL, -- 'critical_aqi', 'emergency_contact', 'location_update'
+    message          TEXT,
+    aqi_value        INTEGER,
+    location_lat     DECIMAL(9, 6),
+    location_lon     DECIMAL(9, 6),
+    members_notified INTEGER DEFAULT 0,
+    sent_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_family_alerts_group ON family_alerts (group_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_family_alerts_user ON family_alerts (triggered_by_user);
+
+-- Add RLS for new tables
+ALTER TABLE medications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE family_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE family_group_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE emergency_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medication_reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE family_alerts ENABLE ROW LEVEL SECURITY;
+
+-- Service role policies
+CREATE POLICY "service_role_all_medications" ON medications FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "service_role_all_family_groups" ON family_groups FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "service_role_all_family_members" ON family_group_members FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "service_role_all_emergency_contacts" ON emergency_contacts FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "service_role_all_medication_reminders" ON medication_reminders FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "service_role_all_family_alerts" ON family_alerts FOR ALL USING (auth.role() = 'service_role');
+
+-- User policies (read their own data)
+CREATE POLICY "users_read_own_medications" ON medications FOR SELECT USING (
+    user_id IN (SELECT id FROM users WHERE auth_user_id IS NOT NULL AND auth_user_id = auth.uid())
+);
+
+CREATE POLICY "users_read_own_emergency_contacts" ON emergency_contacts FOR SELECT USING (
+    user_id IN (SELECT id FROM users WHERE auth_user_id IS NOT NULL AND auth_user_id = auth.uid())
+);
+
+CREATE POLICY "users_read_family_groups" ON family_groups FOR SELECT USING (
+    id IN (SELECT group_id FROM family_group_members WHERE user_id IN (
+        SELECT id FROM users WHERE auth_user_id IS NOT NULL AND auth_user_id = auth.uid()
+    ))
+);
+
+
+-- ══════════════════════════════════════════════════════════════
 -- SEED: test user for local development — remove before go-live
 -- ══════════════════════════════════════════════════════════════
 INSERT INTO users (

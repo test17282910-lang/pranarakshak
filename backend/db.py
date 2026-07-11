@@ -256,6 +256,325 @@ class Database:
             "is_active": True,
         }).execute()
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW FEATURES: Medications, Family Groups, Emergency Contacts
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ── Medications ────────────────────────────────────────────────────────────
+
+    def add_medication(
+        self,
+        user_id: str,
+        medication_name: str,
+        medication_type: str,
+        dosage: str,
+        frequency: str,
+        custom_schedule: list[str],
+        aqi_trigger: Optional[int],
+        condition_specific: bool,
+    ) -> str:
+        """Add a medication for a user. Returns medication ID."""
+        medication_data = {
+            "user_id": user_id,
+            "medication_name": medication_name,
+            "medication_type": medication_type,
+            "dosage": dosage,
+            "frequency": frequency,
+            "custom_schedule": custom_schedule,
+            "aqi_trigger": aqi_trigger,
+            "condition_specific": condition_specific,
+            "active": True,
+        }
+        response = self.client.table("medications").insert(medication_data).execute()
+        return response.data[0]["id"] if response.data else ""
+
+    def get_user_medications(self, user_id: str) -> list[dict]:
+        """Get all active medications for a user."""
+        response = (
+            self.client.table("medications")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("active", True)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return response.data or []
+
+    def update_medication(
+        self,
+        medication_id: str,
+        medication_name: str,
+        medication_type: str,
+        dosage: str,
+        frequency: str,
+        custom_schedule: list[str],
+        aqi_trigger: Optional[int],
+        condition_specific: bool,
+    ) -> bool:
+        """Update a medication. Returns True if successful."""
+        try:
+            medication_data = {
+                "medication_name": medication_name,
+                "medication_type": medication_type,
+                "dosage": dosage,
+                "frequency": frequency,
+                "custom_schedule": custom_schedule,
+                "aqi_trigger": aqi_trigger,
+                "condition_specific": condition_specific,
+            }
+            response = (
+                self.client.table("medications")
+                .update(medication_data)
+                .eq("id", medication_id)
+                .execute()
+            )
+            return len(response.data) > 0
+        except Exception:
+            return False
+
+    def delete_medication(self, medication_id: str) -> bool:
+        """Delete (deactivate) a medication. Returns True if successful."""
+        try:
+            response = (
+                self.client.table("medications")
+                .update({"active": False})
+                .eq("id", medication_id)
+                .execute()
+            )
+            return len(response.data) > 0
+        except Exception:
+            return False
+
+    def check_recent_medication_reminder(self, medication_id: str, hours: int = 6) -> bool:
+        """Check if a medication reminder was sent recently."""
+        from datetime import timedelta
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        response = (
+            self.client.table("medication_reminders")
+            .select("id")
+            .eq("medication_id", medication_id)
+            .eq("status", "sent")
+            .gte("sent_at", cutoff_time.isoformat())
+            .limit(1)
+            .execute()
+        )
+        return len(response.data or []) > 0
+
+    def log_medication_reminder(
+        self,
+        medication_id: str,
+        user_id: str,
+        reminder_type: str,
+        aqi_at_time: int,
+        message_sent: str,
+        channel: str,
+        status: str,
+    ) -> None:
+        """Log a medication reminder."""
+        reminder_data = {
+            "medication_id": medication_id,
+            "user_id": user_id,
+            "reminder_type": reminder_type,
+            "aqi_at_time": aqi_at_time,
+            "message_sent": message_sent,
+            "channel": channel,
+            "status": status,
+        }
+        self.client.table("medication_reminders").insert(reminder_data).execute()
+
+    # ── Family Groups ──────────────────────────────────────────────────────────
+
+    def create_family_group(
+        self,
+        group_name: str,
+        creator_user_id: str,
+        description: Optional[str],
+        shared_alert_threshold: int,
+        auto_share_location: bool,
+        emergency_mode: bool,
+    ) -> str:
+        """Create a family group. Returns group ID."""
+        group_data = {
+            "group_name": group_name,
+            "creator_user_id": creator_user_id,
+            "description": description,
+            "shared_alert_threshold": shared_alert_threshold,
+            "auto_share_location": auto_share_location,
+            "emergency_mode": emergency_mode,
+            "active": True,
+        }
+        response = self.client.table("family_groups").insert(group_data).execute()
+        return response.data[0]["id"] if response.data else ""
+
+    def get_family_group(self, group_id: str) -> Optional[dict]:
+        """Get family group details."""
+        response = (
+            self.client.table("family_groups")
+            .select("*")
+            .eq("id", group_id)
+            .eq("active", True)
+            .maybe_single()
+            .execute()
+        )
+        return response.data
+
+    def add_family_member(self, group_id: str, user_id: str, role: str = "member") -> bool:
+        """Add a member to a family group. Returns True if successful."""
+        try:
+            member_data = {
+                "group_id": group_id,
+                "user_id": user_id,
+                "role": role,
+                "notifications_enabled": True,
+            }
+            response = self.client.table("family_group_members").insert(member_data).execute()
+            return len(response.data) > 0
+        except Exception:
+            return False  # Likely duplicate member
+
+    def get_user_family_groups(self, user_id: str) -> list[dict]:
+        """Get all family groups for a user."""
+        response = (
+            self.client.table("family_group_members")
+            .select("*, family_groups(*)")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        
+        groups = []
+        for member in response.data or []:
+            if member.get("family_groups"):
+                group = member["family_groups"]
+                group["user_role"] = member["role"]
+                group["notifications_enabled"] = member["notifications_enabled"]
+                groups.append(group)
+        
+        return groups
+
+    def get_family_group_members(self, group_id: str) -> list[dict]:
+        """Get all members of a family group."""
+        response = (
+            self.client.table("family_group_members")
+            .select("*, users(id, name, email, phone, condition, severity)")
+            .eq("group_id", group_id)
+            .execute()
+        )
+        
+        members = []
+        for member in response.data or []:
+            if member.get("users"):
+                user_data = member["users"]
+                user_data["role"] = member["role"]
+                user_data["notifications_enabled"] = member["notifications_enabled"]
+                user_data["joined_at"] = member["joined_at"]
+                members.append(user_data)
+        
+        return members
+
+    def log_family_alert(
+        self,
+        group_id: str,
+        triggered_by_user: str,
+        alert_type: str,
+        message: str,
+        members_notified: int,
+    ) -> None:
+        """Log a family alert."""
+        alert_data = {
+            "group_id": group_id,
+            "triggered_by_user": triggered_by_user,
+            "alert_type": alert_type,
+            "message": message,
+            "members_notified": members_notified,
+        }
+        self.client.table("family_alerts").insert(alert_data).execute()
+
+    # ── Emergency Contacts ─────────────────────────────────────────────────────
+
+    def add_emergency_contact(
+        self,
+        user_id: str,
+        contact_name: str,
+        relationship: str,
+        phone: Optional[str],
+        email: Optional[str],
+        priority: int,
+        notify_on_critical: bool,
+        notify_on_missed_checkin: bool,
+    ) -> str:
+        """Add an emergency contact for a user. Returns contact ID."""
+        contact_data = {
+            "user_id": user_id,
+            "contact_name": contact_name,
+            "relationship": relationship,
+            "phone": phone,
+            "email": email,
+            "priority": priority,
+            "notify_on_critical": notify_on_critical,
+            "notify_on_missed_checkin": notify_on_missed_checkin,
+            "active": True,
+        }
+        response = self.client.table("emergency_contacts").insert(contact_data).execute()
+        return response.data[0]["id"] if response.data else ""
+
+    def get_user_emergency_contacts(self, user_id: str) -> list[dict]:
+        """Get all active emergency contacts for a user."""
+        response = (
+            self.client.table("emergency_contacts")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("active", True)
+            .order("priority", desc=False)  # Lower priority number = higher priority
+            .execute()
+        )
+        return response.data or []
+
+    def update_emergency_contact(
+        self,
+        contact_id: str,
+        contact_name: str,
+        relationship: str,
+        phone: Optional[str],
+        email: Optional[str],
+        priority: int,
+        notify_on_critical: bool,
+        notify_on_missed_checkin: bool,
+    ) -> bool:
+        """Update an emergency contact. Returns True if successful."""
+        try:
+            contact_data = {
+                "contact_name": contact_name,
+                "relationship": relationship,
+                "phone": phone,
+                "email": email,
+                "priority": priority,
+                "notify_on_critical": notify_on_critical,
+                "notify_on_missed_checkin": notify_on_missed_checkin,
+            }
+            response = (
+                self.client.table("emergency_contacts")
+                .update(contact_data)
+                .eq("id", contact_id)
+                .execute()
+            )
+            return len(response.data) > 0
+        except Exception:
+            return False
+
+    def delete_emergency_contact(self, contact_id: str) -> bool:
+        """Delete (deactivate) an emergency contact. Returns True if successful."""
+        try:
+            response = (
+                self.client.table("emergency_contacts")
+                .update({"active": False})
+                .eq("id", contact_id)
+                .execute()
+            )
+            return len(response.data) > 0
+        except Exception:
+            return False
+
 
 # ─── Singleton ────────────────────────────────────────────────────────────────
 
