@@ -1093,7 +1093,12 @@ export default function Dashboard() {
                   </div>
 
                   {/* ── NEW FEATURE: Smart Indoor Air Quality Recommendations ── */}
-                  <SmartIndoorRecommendations userId={userId!} currentAqi={predictedAqi} />
+                  <SmartIndoorRecommendations 
+                    userId={userId!} 
+                    currentAqi={currentAqi}
+                    alertTier={prediction.alert_tier}
+                    effectiveAqi={prediction.risk_explanation?.effective_aqi}
+                  />
 
                   {/* ── Alert Notification Dispatch History Log ── */}
                   <div className="glass reveal" style={{ borderRadius: "1.5rem", padding: "2rem", transitionDelay: "240ms", display: "flex", flexDirection: "column" }}>

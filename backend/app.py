@@ -348,10 +348,27 @@ def classify_aqi(
     severity = (severity or "moderate").strip().lower()
     clean_symptoms = [s.strip() for s in (symptoms or []) if s and s.strip()]
 
-    # Compute penalties
-    symptom_penalty = len(clean_symptoms) * 4
+    # Compute penalties — NON-LINEAR scaling to prevent panic at low AQI
+    # and ensure meaningful impact at high AQI
+    # At AQI < 50: penalties reduced (no point adding +37 to AQI of 15)
+    # At AQI 50-150: full penalty applies
+    # At AQI > 150: penalties scale up (already severe, more vulnerable)
+    if aqi <= 50:
+        severity_multiplier = 0.5   # Dampen penalties at low baseline
+    elif aqi <= 100:
+        severity_multiplier = 1.0   # Full penalty at moderate levels
+    elif aqi <= 200:
+        severity_multiplier = 1.5   # Amplify at high levels — more vulnerable
+    else:
+        severity_multiplier = 2.0   # Max amplification at severe levels
+
+    raw_symptom_penalty = len(clean_symptoms) * 4
+    symptom_penalty = round(raw_symptom_penalty * severity_multiplier)
     effective_aqi = aqi + symptom_penalty
     shift = get_condition_shift(condition, severity)
+    
+    # Apply same non-linear multiplier to condition shift
+    scaled_shift = round(shift * severity_multiplier)
 
     # ── Option A: XGBoost Clinical Classifier ──────────────────────────────────
     if _state["risk_model"] is not None and pollutants is not None:
@@ -390,7 +407,7 @@ def classify_aqi(
 
     # ── Option B: Rule-Based Fallback ──────────────────────────────────────────
     if tier is None:
-        final_shifted_aqi = effective_aqi + shift
+        final_shifted_aqi = effective_aqi + scaled_shift
 
         if final_shifted_aqi <= 50:
             tier = "safe"
@@ -441,10 +458,10 @@ def classify_aqi(
         "raw_aqi": round(aqi, 1),
         "condition": condition,
         "severity": severity,
-        "condition_shift": shift,
+        "condition_shift": scaled_shift,
         "symptom_count": len(clean_symptoms),
         "symptom_penalty": symptom_penalty,
-        "effective_aqi": round(effective_aqi + shift, 1),
+        "effective_aqi": round(effective_aqi + scaled_shift, 1),
         "threshold_crossed": threshold_crossed,
         "method": method,
         "why_be_careful": why_be_careful
@@ -536,8 +553,8 @@ def classify_aqi(
     icon = tier_icons.get(tier, "ℹ️")
 
     shift_parts = []
-    if shift > 0:
-        shift_parts.append(f"{condition} ({severity}) adds +{shift}")
+    if scaled_shift > 0:
+        shift_parts.append(f"{condition} ({severity}) adds +{scaled_shift}")
     if symptom_penalty > 0:
         shift_parts.append(f"{len(clean_symptoms)} symptom{'s' if len(clean_symptoms) > 1 else ''} adds +{symptom_penalty}")
     shift_text = "; ".join(shift_parts)
@@ -545,7 +562,7 @@ def classify_aqi(
 
     message = (
         f"{icon} Your personal health risk is {tier_display}. "
-        f"AQI {round(aqi)} → effective {round(effective_aqi + shift)}{shift_clause}. "
+        f"AQI {round(aqi)} → effective {round(effective_aqi + scaled_shift)}{shift_clause}. "
         f"Personalised for {cond_label}."
     )
 
@@ -892,22 +909,71 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
 
     for col in FEATURES:
         if col not in df_ready.columns:
-            df_ready[col] = 0.0
-            
+            df_ready[col] = np.nan  # Keep as NaN — do NOT default to 0.0 yet
+
     if TARGET not in df_ready.columns:
         df_ready[TARGET] = df_ready.get("pm25", pd.Series([50.0])) * 1.5
 
-    # Fill missing weather features with sensible defaults if NaN
-    if "temperature" in df_ready.columns:
-        df_ready["temperature"] = df_ready["temperature"].fillna(25.0)
-    if "humidity" in df_ready.columns:
-        df_ready["humidity"] = df_ready["humidity"].fillna(60.0)
-    if "wind_speed" in df_ready.columns:
-        df_ready["wind_speed"] = df_ready["wind_speed"].fillna(3.0)
+    # ── CRITICAL: Intelligent missing value imputation ─────────────────────
+    # Using 0.0 for missing pollutants skews the scaler badly.
+    # Instead use forward-fill → backward-fill → only then use realistic defaults.
 
-    # Fill any remaining NaN values in the features and target with 0.0
+    # Step A: Forward/back fill within the time series first
+    df_ready[FEATURES + [TARGET]] = (
+        df_ready[FEATURES + [TARGET]]
+        .ffill()
+        .bfill()
+    )
+
+    # Step B: For any still-missing columns use realistic median defaults
+    # (NOT zero, which sits at the extreme low end of the scaler)
+    realistic_defaults = {
+        "pm25": 35.0,    # Moderate PM2.5 (not clean, not dirty)
+        "pm10": 60.0,    # Moderate PM10
+        "no2": 20.0,     # Moderate NO2 (ppb)
+        "o3": 40.0,      # Moderate O3 (ppb)
+        "co": 0.8,       # Moderate CO (ppm)
+        "temperature": 28.0,   # Typical Indian temperature
+        "humidity": 60.0,      # Typical humidity
+        "wind_speed": 2.0,     # Light breeze
+        # Lag/rolling features: use the same moderate defaults
+        "pm25_lag1": 35.0,
+        "pm25_lag6": 35.0,
+        "pm25_lag24": 35.0,
+        "pm25_rolling6": 35.0,
+        "pm25_rolling24": 35.0,
+        "hour_sin": 0.0,
+        "hour_cos": 1.0,
+        "day_sin": 0.0,
+        "day_cos": 1.0,
+    }
+
     for col in FEATURES + [TARGET]:
-        df_ready[col] = df_ready[col].fillna(0.0)
+        if df_ready[col].isna().any():
+            default_val = realistic_defaults.get(col, df_ready[col].median())
+            if pd.isna(default_val):
+                default_val = realistic_defaults.get(col, 35.0)
+            df_ready[col] = df_ready[col].fillna(default_val)
+            logger.debug(f"Imputed column '{col}' with default {default_val}")
+
+    # Step C: Anchor the AQI column to the live reading for more accurate predictions
+    # This prevents the synthetic history from drifting too far from reality
+    if live_aqi is not None and live_aqi > 0:
+        # Gently blend the live AQI into the AQI column of our history
+        # to prevent cold-start drift
+        current_aqi_in_data = df_ready[TARGET].iloc[-1] if TARGET in df_ready.columns else live_aqi
+        if abs(current_aqi_in_data - live_aqi) > 30:
+            # Big mismatch — replace the last few rows with live data
+            logger.info(f"AQI mismatch detected: data={current_aqi_in_data:.1f}, live={live_aqi:.1f}. Anchoring to live.")
+            df_ready.loc[df_ready.index[-6:], TARGET] = live_aqi
+            # Also update pm25 proportionally if it's the main driver
+            estimated_pm25 = live_aqi / 1.5  # Rough inverse of the pm25*1.5 formula
+            df_ready.loc[df_ready.index[-6:], "pm25"] = estimated_pm25
+            # Re-apply rolling/lag features for the corrected rows
+            df_ready = engineer_features(df_ready)
+            for col in FEATURES + [TARGET]:
+                if df_ready[col].isna().any():
+                    df_ready[col] = df_ready[col].fillna(realistic_defaults.get(col, 35.0))
 
     # ── Step 5: Scale + prepare input tensor ──────────────────────────────────
     scaler = _state["scaler"]
@@ -928,10 +994,30 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
 
     # ── Step 7: RMSE safety buffer ────────────────────────────────────────────
     rmse = _state["metadata"].get("rmse", 15.0)
-    # Cap the buffer: when model RMSE is large (e.g. 83), adding it raw causes
-    # severe over-prediction. Cap at 15.0 AQI points.
-    rmse_buffer = min(rmse, 15.0)
-    adjusted_aqi = raw_aqi + rmse_buffer  # use p50 (median) + capped buffer
+    # Cap the buffer conservatively — large RMSE means the model is uncertain,
+    # not that AQI is guaranteed to be higher.
+    rmse_buffer = min(rmse, 10.0)
+
+    # Use p50 (median) as base — p90 is too aggressive and causes over-prediction
+    adjusted_aqi = raw_aqi + rmse_buffer
+
+    # ── Sanity check: cap forecast to a realistic range vs live AQI ──────────
+    # If no live AQI is available, trust the model.
+    # If live AQI is available, the 24h forecast should not jump more than 80%
+    # higher than current unless the model is very confident (low std_aqi).
+    if live_aqi is not None and live_aqi > 0:
+        max_reasonable_jump = live_aqi * 1.8   # Allow up to 80% increase
+        min_reasonable_drop = live_aqi * 0.4   # Allow up to 60% decrease
+        
+        if adjusted_aqi > max_reasonable_jump and std_aqi > 20:
+            logger.warning(
+                f"Forecast {adjusted_aqi:.1f} exceeds max reasonable jump from live {live_aqi:.1f}. "
+                f"Model std={std_aqi:.1f} is high — capping forecast."
+            )
+            adjusted_aqi = max_reasonable_jump
+        
+        if adjusted_aqi < min_reasonable_drop and std_aqi > 20:
+            adjusted_aqi = min_reasonable_drop
 
     # Extract latest pollutant context for the XGBoost health classifier
     latest_pollutants = {}
