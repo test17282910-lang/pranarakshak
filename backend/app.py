@@ -489,6 +489,11 @@ def classify_aqi(
         "symptom_weights": {                              # Show per-symptom weights for transparency
             s: SYMPTOM_WEIGHTS.get(s.lower().strip().replace(" ", ""), 4)
             for s in clean_symptoms
+        },
+        # Weighted values after multiplier — what actually goes into the penalty
+        "symptom_weighted_penalties": {
+            s: round(SYMPTOM_WEIGHTS.get(s.lower().strip().replace(" ", ""), 4) * severity_multiplier)
+            for s in clean_symptoms
         }
     }
 
@@ -581,7 +586,15 @@ def classify_aqi(
     if scaled_shift > 0:
         shift_parts.append(f"{condition} ({severity}) adds +{scaled_shift}")
     if symptom_penalty > 0:
-        shift_parts.append(f"{len(clean_symptoms)} symptom{'s' if len(clean_symptoms) > 1 else ''} adds +{symptom_penalty}")
+        # Show per-symptom weighted breakdown instead of a flat "N symptoms adds +X"
+        # e.g. "Wheezing +8, ShortnessOfBreath +12, NighttimeSymptoms +4 → total +36"
+        per_symptom_parts = []
+        for s in clean_symptoms:
+            w = SYMPTOM_WEIGHTS.get(s.lower().strip().replace(" ", ""), 4)
+            weighted = round(w * severity_multiplier)
+            per_symptom_parts.append(f"{s} +{weighted}")
+        symptom_detail = ", ".join(per_symptom_parts)
+        shift_parts.append(f"symptoms ({symptom_detail}) → total +{symptom_penalty}")
     shift_text = "; ".join(shift_parts)
     shift_clause = f" ({shift_text})" if shift_text else ""
 

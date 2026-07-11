@@ -26,7 +26,7 @@ def build_alert_sms_text(name: str, tier: str, raw_aqi: float, effective_aqi: fl
     )
 
 
-def build_alert_email_html(name: str, tier: str, raw_aqi: float, effective_aqi: float, condition: str, severity: str, symptoms: list[str], trigger: str, why_be_careful: str, precautions: list[dict]) -> str:
+def build_alert_email_html(name: str, tier: str, raw_aqi: float, effective_aqi: float, condition: str, severity: str, symptoms: list[str], trigger: str, why_be_careful: str, precautions: list[dict], symptom_weighted_penalties: dict | None = None) -> str:
     """Formats a premium clinical HTML email alert."""
     theme_color = "#e53e3e" if tier.lower() in ("high_risk", "critical") else "#dd6b20"
     
@@ -37,6 +37,18 @@ def build_alert_email_html(name: str, tier: str, raw_aqi: float, effective_aqi: 
 
     symptoms_str = ", ".join(symptoms) if symptoms else "None reported"
     trigger_str = trigger if trigger else "None reported"
+
+    # Use actual weighted penalties — never fall back to the flat len*4 formula
+    if symptom_weighted_penalties and symptom_weighted_penalties:
+        actual_symptom_penalty = sum(symptom_weighted_penalties.values())
+        # e.g. ": Wheezing +8, ShortnessOfBreath +12, NighttimeSymptoms +4"
+        symptom_breakdown_str = ": " + ", ".join(
+            f"{s} +{w}" for s, w in symptom_weighted_penalties.items()
+        ) if symptom_weighted_penalties else ""
+    else:
+        # Fallback only if weights weren't passed (older callers)
+        actual_symptom_penalty = len(symptoms) * 4
+        symptom_breakdown_str = ""
 
     return f"""
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;padding:24px;background-color:#ffffff;color:#1a202c;">
@@ -56,8 +68,8 @@ def build_alert_email_html(name: str, tier: str, raw_aqi: float, effective_aqi: 
                 <h4 style="margin:0 0 8px;font-size:14px;color:#4a5568;text-transform:uppercase;letter-spacing:0.5px;">Exposure Risk Summary</h4>
                 <table style="width:100%;font-size:13px;border-collapse:collapse;">
                     <tr><td style="padding:4px 0;color:#718096;">Factual Local AQI</td><td style="padding:4px 0;text-align:right;font-weight:600;">{round(raw_aqi)}</td></tr>
-                    <tr><td style="padding:4px 0;color:#718096;">Condition Shift ({condition} - {severity})</td><td style="padding:4px 0;text-align:right;font-weight:600;">+{round(effective_aqi - raw_aqi - len(symptoms)*4)}</td></tr>
-                    <tr><td style="padding:4px 0;color:#718096;">Symptom Penalty ({len(symptoms)} active)</td><td style="padding:4px 0;text-align:right;font-weight:600;">+{len(symptoms)*4}</td></tr>
+                    <tr><td style="padding:4px 0;color:#718096;">Condition Shift ({condition} - {severity})</td><td style="padding:4px 0;text-align:right;font-weight:600;">+{round(effective_aqi - raw_aqi - actual_symptom_penalty)}</td></tr>
+                    <tr><td style="padding:4px 0;color:#718096;">Symptom Penalty ({len(symptoms)} active{symptom_breakdown_str})</td><td style="padding:4px 0;text-align:right;font-weight:600;">+{actual_symptom_penalty}</td></tr>
                     <tr style="border-top:1px solid #e2e8f0;"><td style="padding:8px 0 0;color:#2d3748;font-weight:700;">Effective Vulnerability AQI</td><td style="padding:8px 0 0;text-align:right;font-weight:700;color:{theme_color};font-size:16px;">{round(effective_aqi)}</td></tr>
                 </table>
             </div>
@@ -231,7 +243,8 @@ Stay safe! 💙 Pranarakshak"""
                         symptoms=symptoms,
                         trigger=personalized_issue,
                         why_be_careful=risk_explanation["why_be_careful"],
-                        precautions=precautions
+                        precautions=precautions,
+                        symptom_weighted_penalties=risk_explanation.get("symptom_weighted_penalties", {})
                     )
                     status, provider_id = send_email(email, subject, html_content)
                     

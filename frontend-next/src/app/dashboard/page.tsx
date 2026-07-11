@@ -35,6 +35,7 @@ interface RiskExplanation {
   why_be_careful?: string;
   severity_multiplier?: number;
   symptom_weights?: Record<string, number>;
+  symptom_weighted_penalties?: Record<string, number>; // post-multiplier values
 }
 
 interface PredictionData {
@@ -878,12 +879,10 @@ export default function Dashboard() {
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Symp. Penalty</div>
                             <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem", color: "var(--accent)" }}>+{Math.round(prediction.risk_explanation.symptom_penalty)}</div>
-                            {/* Fix Bug 3: Show weighted breakdown per symptom */}
-                            {prediction.risk_explanation.symptom_weights && Object.keys(prediction.risk_explanation.symptom_weights).length > 0 && (
-                              <div style={{ fontSize: "0.5rem", color: "var(--muted-foreground)", marginTop: "0.15rem" }}>
-                                {Object.entries(prediction.risk_explanation.symptom_weights).map(([s, w]) => `${s.slice(0,4)}:+${w}`).join(" ")}
-                              </div>
-                            )}
+                            {/* Show count as sub-label; full breakdown rendered below the formula row */}
+                            <div style={{ fontSize: "0.5rem", color: "var(--muted-foreground)", marginTop: "0.15rem" }}>
+                              {prediction.risk_explanation.symptom_count} symptom{prediction.risk_explanation.symptom_count !== 1 ? "s" : ""}
+                            </div>
                           </div>
                           
                           <span style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>=</span>
@@ -912,6 +911,58 @@ export default function Dashboard() {
                           <span>Engineered via: <strong style={{ textTransform: "uppercase" }}>{prediction.risk_explanation.method}</strong></span>
                           <span>Symptoms: {prediction.risk_explanation.symptom_count} · Multiplier: ×{prediction.risk_explanation.severity_multiplier ?? 1.0}</span>
                         </div>
+
+                        {/* Per-symptom weighted penalty breakdown — replaces the invisible 0.5rem sub-text */}
+                        {prediction.risk_explanation.symptom_weighted_penalties &&
+                          Object.keys(prediction.risk_explanation.symptom_weighted_penalties).length > 0 && (
+                          <div style={{
+                            padding: "0.75rem 1rem",
+                            borderRadius: "0.5rem",
+                            background: "rgba(255,255,255,0.02)",
+                            border: "1px solid var(--border)",
+                          }}>
+                            <div style={{ fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted-foreground)", marginBottom: "0.5rem" }}>
+                              Symptom Weight Breakdown
+                              {prediction.risk_explanation.severity_multiplier && prediction.risk_explanation.severity_multiplier !== 1.0 && (
+                                <span style={{ marginLeft: "0.5rem", color: "var(--accent)" }}>
+                                  (base × {prediction.risk_explanation.severity_multiplier} severity multiplier)
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                              {Object.entries(prediction.risk_explanation.symptom_weighted_penalties).map(([symptom, penalty]) => {
+                                const baseWeight = prediction.risk_explanation?.symptom_weights?.[symptom] ?? penalty;
+                                // Colour-code by clinical severity of the symptom
+                                const chipColor =
+                                  baseWeight >= 12 ? "oklch(0.62 0.20 18 / 0.15)" :
+                                  baseWeight >= 10 ? "oklch(0.72 0.14 32 / 0.15)" :
+                                  baseWeight >= 8  ? "oklch(0.78 0.14 36 / 0.15)" :
+                                  baseWeight >= 6  ? "oklch(0.82 0.11 78 / 0.15)" :
+                                                     "rgba(255,255,255,0.04)";
+                                const chipBorder =
+                                  baseWeight >= 12 ? "oklch(0.62 0.20 18 / 0.4)" :
+                                  baseWeight >= 10 ? "oklch(0.72 0.14 32 / 0.4)" :
+                                  baseWeight >= 8  ? "oklch(0.78 0.14 36 / 0.4)" :
+                                  baseWeight >= 6  ? "oklch(0.82 0.11 78 / 0.4)" :
+                                                     "var(--border)";
+                                return (
+                                  <div key={symptom} style={{
+                                    display: "flex", alignItems: "center", gap: "0.4rem",
+                                    padding: "0.3rem 0.625rem",
+                                    borderRadius: "0.375rem",
+                                    background: chipColor,
+                                    border: `1px solid ${chipBorder}`,
+                                    fontSize: "0.6875rem",
+                                  }}>
+                                    <span style={{ color: "var(--foreground)", fontWeight: 500 }}>{symptom}</span>
+                                    <span style={{ color: "var(--muted-foreground)" }}>base {baseWeight}</span>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--accent)" }}>→ +{penalty}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         {prediction.risk_explanation.why_be_careful && (
                           <div style={{ 
