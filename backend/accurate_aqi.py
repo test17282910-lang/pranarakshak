@@ -55,7 +55,7 @@ def fetch_multiple_aqi_sources(lat: float, lon: float) -> Dict:
                             "pm25": pm25_val,
                             "pm10": pm10_val,
                             "last_update": result.get("time", {}).get("s"),
-                            "reliable": distance_km < 25,  # Reliable if within 25km
+                            "reliable": distance_km < max_distance,  # More flexible for Hyderabad area
                             "data_age_hours": 0  # Assume current
                         }
     except Exception as e:
@@ -250,6 +250,65 @@ def get_most_accurate_aqi(sources: Dict, lat: float, lon: float) -> Tuple[float,
     return best_source["aqi"], best_source["name"], accuracy_info
 
 
+def get_hyderabad_stations_aqi() -> Dict:
+    """
+    Get AQI from all available Hyderabad area stations for comparison.
+    This helps find the most accurate local reading.
+    """
+    hyderabad_stations = {}
+    
+    if not WAQI_TOKEN:
+        return hyderabad_stations
+    
+    try:
+        # Search for Hyderabad stations
+        url = f"{WAQI_BASE}/search/"
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, params={"token": WAQI_TOKEN, "keyword": "hyderabad"})
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("status") == "ok":
+                    stations = data.get("data", [])
+                    
+                    for station in stations[:5]:  # Check top 5 stations
+                        if station.get("station", {}).get("name") and station.get("uid"):
+                            station_name = station["station"]["name"]
+                            station_uid = station["uid"]
+                            
+                            # Get individual station data
+                            try:
+                                station_url = f"{WAQI_BASE}/feed/@{station_uid}/"
+                                station_resp = client.get(station_url, params={"token": WAQI_TOKEN})
+                                if station_resp.status_code == 200:
+                                    station_data = station_resp.json()
+                                    if station_data.get("status") == "ok":
+                                        result = station_data["data"]
+                                        
+                                        # Calculate distance from Ghatkesar
+                                        station_geo = result.get("city", {}).get("geo", [])
+                                        distance = 999
+                                        if len(station_geo) == 2:
+                                            st_lat, st_lon = float(station_geo[0]), float(station_geo[1])
+                                            # Distance from Ghatkesar coordinates
+                                            distance = ((st_lat - 17.5449)**2 + (st_lon - 78.6898)**2)**0.5 * 111
+                                        
+                                        aqi_val = result.get("aqi")
+                                        if aqi_val and aqi_val != "-":
+                                            hyderabad_stations[station_name] = {
+                                                "aqi": float(aqi_val),
+                                                "distance_km": round(distance, 1),
+                                                "coordinates": station_geo,
+                                                "last_update": result.get("time", {}).get("s"),
+                                                "uid": station_uid
+                                            }
+                            except Exception as e:
+                                logger.warning(f"Failed to get data for station {station_name}: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to search Hyderabad stations: {e}")
+    
+    return hyderabad_stations
+
+
 def get_accurate_current_aqi(lat: float, lon: float) -> Tuple[float, Dict]:
     """
     Main function to get the most accurate current AQI with full transparency.
@@ -257,8 +316,33 @@ def get_accurate_current_aqi(lat: float, lon: float) -> Tuple[float, Dict]:
     """
     logger.info(f"🎯 Fetching accurate AQI for ({lat:.4f}, {lon:.4f})")
     
+    # For Hyderabad area, get specific local stations
+    hyderabad_stations = {}
+    is_hyderabad_area = (17.2 <= lat <= 17.7) and (78.2 <= lon <= 78.9)
+    
+    if is_hyderabad_area:
+        logger.info("🏙️ Detected Hyderabad area - fetching local stations")
+        hyderabad_stations = get_hyderabad_stations_aqi()
+    
     # Fetch from all sources
     sources = fetch_multiple_aqi_sources(lat, lon)
+    
+    # Add Hyderabad stations to sources if available
+    if hyderabad_stations:
+        # Find closest Hyderabad station
+        closest_hyd_station = min(hyderabad_stations.items(), key=lambda x: x[1]["distance_km"])
+        station_name, station_data = closest_hyd_station
+        
+        logger.info(f"🏙️ Closest Hyderabad station: {station_name} ({station_data['distance_km']}km) = AQI {station_data['aqi']}")
+        
+        sources["hyderabad_local"] = {
+            "aqi": station_data["aqi"],
+            "station_name": station_name,
+            "distance_km": station_data["distance_km"],
+            "coordinates": station_data["coordinates"],
+            "reliable": station_data["distance_km"] < 50,  # Hyderabad area threshold
+            "data_age_hours": 0  # Assume current
+        }
     
     # Get most accurate reading
     aqi_value, source_name, accuracy_info = get_most_accurate_aqi(sources, lat, lon)
@@ -270,6 +354,7 @@ def get_accurate_current_aqi(lat: float, lon: float) -> Tuple[float, Dict]:
         "coordinates": {"lat": lat, "lon": lon},
         "accuracy_info": accuracy_info,
         "all_sources": sources,
+        "hyderabad_stations": hyderabad_stations if hyderabad_stations else None,
         "timestamp": datetime.now().isoformat()
     }
     
