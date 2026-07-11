@@ -697,28 +697,28 @@ def health() -> HealthResponse:
 @app.get("/test-alert/{user_id}", tags=["System"])
 async def test_alert(user_id: str):
     """
-    TEST ENDPOINT: Force send SMS and email alert to a user.
+    TEST ENDPOINT: Force send WhatsApp and email alert to a user.
     Use this to debug Twilio/SendGrid configuration.
     """
     import asyncio
-    from alerts import send_sms, send_email
+    from alerts import send_whatsapp, send_email
     
     # Get user
     user = await asyncio.to_thread(db.get_user_by_id, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    results = {"user_id": user_id, "sms": None, "email": None}
+    results = {"user_id": user_id, "whatsapp": None, "email": None}
     
-    # Test SMS
+    # Test WhatsApp
     phone = user.get("phone")
     if phone:
-        sms_text = f"🧪 TEST ALERT from Pranarakshak\n\nHello {user.get('name', 'User')}! This is a test SMS to verify Twilio is working correctly."
-        status, msg_id = send_sms(phone, sms_text)
-        results["sms"] = {"status": status, "id": msg_id, "phone": phone}
-        logger.info(f"Test SMS sent to {phone}: {status} - {msg_id}")
+        whatsapp_text = f"🧪 TEST ALERT from Pranarakshak\n\nHello {user.get('name', 'User')}! This is a test WhatsApp message to verify Twilio WhatsApp sandbox is working correctly."
+        status, msg_id = send_whatsapp(phone, whatsapp_text)
+        results["whatsapp"] = {"status": status, "id": msg_id, "phone": phone}
+        logger.info(f"Test WhatsApp sent to {phone}: {status} - {msg_id}")
     else:
-        results["sms"] = {"status": "skipped", "reason": "No phone number"}
+        results["whatsapp"] = {"status": "skipped", "reason": "No phone number"}
     
     # Test Email
     email = user.get("email")
@@ -927,15 +927,15 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
     
     if should_alert and user:
         try:
-            from alerts import send_sms, send_email
+            from alerts import send_whatsapp, send_email
             
             phone = user.get("phone")
             email = user.get("email")
             
-            # Send SMS if phone available
+            # Send WhatsApp if phone available
             if phone:
-                sms_text = f"🚨 Pranarakshak Alert\n\n{alert_reason}\n\n{message}\n\nTop precaution: {precautions[0]['text'] if precautions else 'Stay safe'}"
-                sms_status, sms_id = send_sms(phone, sms_text[:160])  # SMS limit
+                whatsapp_text = f"🚨 Pranarakshak Alert\n\n{alert_reason}\n\n{message}\n\nTop precaution: {precautions[0]['text'] if precautions else 'Stay safe'}"
+                whatsapp_status, whatsapp_id = send_whatsapp(phone, whatsapp_text)
                 
                 # Log to database
                 await asyncio.to_thread(
@@ -944,10 +944,10 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
                         "alert_tier": tier,
                         "alert_message": message,
                         "aqi_value": round(adjusted_aqi, 1),
-                        "channel": "sms",
+                        "channel": "whatsapp",
                         "recipient": phone,
-                        "status": sms_status,
-                        "provider_message_id": sms_id,
+                        "status": whatsapp_status,
+                        "provider_message_id": whatsapp_id,
                     }).execute
                 )
             

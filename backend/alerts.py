@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "").strip()
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "").strip()
 
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "").strip()
 SENDGRID_FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "").strip()
@@ -54,6 +55,49 @@ def send_sms(to: str, body: str) -> tuple[str, str]:
         return "sent", message.sid
     except Exception as exc:
         logger.error(f"❌ Twilio SMS dispatch failed to {to}: {exc}")
+        return "failed", str(exc)
+
+
+# ─── Twilio WhatsApp Dispatch ─────────────────────────────────────────────────
+
+def send_whatsapp(to: str, body: str) -> tuple[str, str]:
+    """
+    Sends a WhatsApp message using Twilio Sandbox.
+    If credentials are dummy or missing, falls back to mock delivery.
+    Returns (status, provider_id/reason).
+    """
+    if not to:
+        return "suppressed", "No phone number registered"
+
+    # Detect placeholders or empty credentials
+    is_mock = (
+        not TWILIO_ACCOUNT_SID 
+        or not TWILIO_AUTH_TOKEN 
+        or not TWILIO_WHATSAPP_FROM
+        or "your_twilio" in TWILIO_ACCOUNT_SID.lower()
+        or TWILIO_ACCOUNT_SID == ""
+    )
+
+    if is_mock:
+        logger.info(f"📬 [MOCK WHATSAPP] to {to}: {body}")
+        return "sent", f"mock_whatsapp_{os.urandom(6).hex()}"
+
+    try:
+        from twilio.rest import Client
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        
+        # Format phone number for WhatsApp
+        whatsapp_to = f"whatsapp:{to}"
+        
+        message = client.messages.create(
+            body=body,
+            from_=TWILIO_WHATSAPP_FROM,
+            to=whatsapp_to
+        )
+        logger.info(f"✓ WhatsApp alert successfully sent to {to} via Twilio. SID: {message.sid}")
+        return "sent", message.sid
+    except Exception as exc:
+        logger.error(f"❌ Twilio WhatsApp dispatch failed to {to}: {exc}")
         return "failed", str(exc)
 
 
