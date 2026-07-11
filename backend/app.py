@@ -1236,6 +1236,63 @@ async def auto_alerts_check() -> dict:
         }
 
 
+@app.get("/debug/data-sources/{user_id}", tags=["Debug"])
+async def debug_data_sources(user_id: str) -> dict:
+    """
+    Debug endpoint to see exactly which AQI data sources and stations are being used.
+    Shows station names, distances, and raw AQI values for troubleshooting accuracy.
+    """
+    try:
+        import asyncio
+        from data_fetcher import get_readings_for_location
+        
+        # Get user location
+        user = await asyncio.to_thread(db.get_user_by_id, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        lat = float(user["last_known_lat"]) if user["last_known_lat"] is not None else 17.385044
+        lon = float(user["last_known_lon"]) if user["last_known_lon"] is not None else 78.486671
+        
+        # Get data sources
+        df, source, live_aqi = await asyncio.to_thread(get_readings_for_location, lat, lon)
+        
+        # Also test individual sources for comparison
+        debug_info = {
+            "user_coordinates": {"lat": lat, "lon": lon},
+            "primary_source": source,
+            "live_current_aqi": live_aqi,
+            "data_available": df is not None,
+            "rows_count": len(df) if df is not None else 0,
+        }
+        
+        # Test WAQI directly for more details
+        try:
+            import httpx
+            waqi_url = f"https://api.waqi.info/feed/geo:{lat};{lon}/"
+            with httpx.Client(timeout=10) as client:
+                resp = client.get(waqi_url, params={"token": os.getenv("WAQI_TOKEN")})
+                if resp.status_code == 200:
+                    waqi_data = resp.json()
+                    if waqi_data.get("status") == "ok":
+                        station = waqi_data["data"]
+                        debug_info["waqi_station"] = {
+                            "name": station.get("city", {}).get("name"),
+                            "coordinates": station.get("city", {}).get("geo"),
+                            "aqi": station.get("aqi"),
+                            "pollution": {k: v.get("v") for k, v in station.get("iaqi", {}).items()},
+                            "last_update": station.get("time", {}).get("s"),
+                        }
+        except Exception as e:
+            debug_info["waqi_error"] = str(e)
+        
+        return debug_info
+        
+    except Exception as e:
+        logger.error(f"Debug data sources failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
+
+
 @app.get("/indoor-recommendations/{user_id}", tags=["Smart Features"])
 async def get_indoor_recommendations_api(user_id: str) -> dict:
     """
