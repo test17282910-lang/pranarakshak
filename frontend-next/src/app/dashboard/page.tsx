@@ -576,6 +576,7 @@ export default function Dashboard() {
       </header>
 
       {/* Feature Navigation Bar */}
+      {/* TODO: Uncomment when features are ready for production
       {profile && (
         <div style={{
           background: "rgba(18, 18, 18, 0.6)",
@@ -628,6 +629,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      */}
 
       <main className="dashboard-wrap" style={{ position: "relative", zIndex: 1 }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 2rem" }}>
