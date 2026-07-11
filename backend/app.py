@@ -179,6 +179,7 @@ class RegisterRequest(BaseModel):
     lon: Optional[float] = Field(None, ge=-180, le=180)
     symptoms: Optional[list[str]] = Field(default=[])
     personalized_issue: Optional[str] = Field(None)
+    alert_threshold: Optional[int] = Field(100, ge=50, le=500, description="Custom AQI threshold for alerts")
 
 
 class LoginRequest(BaseModel):
@@ -908,8 +909,23 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
         patient_name=patient_name
     )
 
-    # ── Send Alert if Risk is High or Critical ────────────────────────────────
-    if tier.lower() in ["high risk", "critical"] and user:
+    # ── Send Alert if Risk is High/Critical OR Custom Threshold Crossed ──────
+    should_alert = False
+    alert_reason = ""
+    
+    # Check if user's custom threshold is crossed
+    user_threshold = user.get("alert_threshold", 100) if user else 100
+    if adjusted_aqi >= user_threshold:
+        should_alert = True
+        alert_reason = f"AQI {round(adjusted_aqi)} crossed your threshold ({user_threshold})"
+    
+    # Or if calculated risk tier is high/critical
+    if tier.lower() in ["high risk", "critical"]:
+        should_alert = True
+        if not alert_reason:
+            alert_reason = f"Health risk tier: {tier}"
+    
+    if should_alert and user:
         try:
             from alerts import send_sms, send_email
             
@@ -918,7 +934,7 @@ async def predict(payload: PredictRequest) -> PredictionResponse:
             
             # Send SMS if phone available
             if phone:
-                sms_text = f"🚨 Pranarakshak Alert\n\n{message}\n\nTop precaution: {precautions[0]['text'] if precautions else 'Stay safe'}"
+                sms_text = f"🚨 Pranarakshak Alert\n\n{alert_reason}\n\n{message}\n\nTop precaution: {precautions[0]['text'] if precautions else 'Stay safe'}"
                 sms_status, sms_id = send_sms(phone, sms_text[:160])  # SMS limit
                 
                 # Log to database
@@ -1041,6 +1057,7 @@ def register_user(payload: RegisterRequest):
         "last_known_lon": payload.lon,
         "symptoms": payload.symptoms,
         "personalized_issue": payload.personalized_issue,
+        "alert_threshold": payload.alert_threshold or 100,
         "active": True,
     }
 

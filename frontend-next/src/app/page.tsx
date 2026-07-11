@@ -43,6 +43,7 @@ export default function Home() {
     condition: "", severity: "moderate",
     lat: null as number | null, lon: null as number | null,
     personalized_issue: "",
+    alert_threshold: 100,
   });
   const [showPassword, setShowPassword]   = useState(false);
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
@@ -150,6 +151,7 @@ export default function Home() {
           lat: formData.lat, lon: formData.lon,
           symptoms: selectedSymptoms,
           personalized_issue: formData.personalized_issue || null,
+          alert_threshold: formData.alert_threshold || 100,
         }),
       });
       const data = await res.json();
@@ -445,6 +447,31 @@ export default function Home() {
                       placeholder="e.g. Cold air, dust, specific pollen, exercise…"
                       value={formData.personalized_issue} onChange={handleInputChange}
                     />
+                  </div>
+
+                  {/* Custom AQI Alert Threshold */}
+                  <div className="form-group">
+                    <label htmlFor="alert_threshold">
+                      Your Unsafe AQI Level
+                      <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)", fontWeight: "normal", marginLeft: "0.5rem" }}>
+                        (Alert me when AQI crosses this)
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      id="alert_threshold"
+                      name="alert_threshold"
+                      min="50"
+                      max="500"
+                      step="10"
+                      placeholder="100"
+                      value={formData.alert_threshold || 100}
+                      onChange={handleInputChange}
+                      style={{ fontFamily: "var(--font-mono)" }}
+                    />
+                    <p style={{ fontSize: "0.75rem", color: "var(--muted-foreground)", marginTop: "0.375rem" }}>
+                      Standard: 100 (Satisfactory) · High sensitivity: 50 (Good) · Low sensitivity: 150 (Moderate)
+                    </p>
                   </div>
 
                   {/* Location */}
