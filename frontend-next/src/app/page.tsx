@@ -579,7 +579,7 @@ export default function Home() {
                       marginBottom: "1.75rem"
                     }}>
                       Pranarakshak combines real-time CPCB monitoring data with advanced LSTM neural networks 
-                      to predict air quality 24 hours ahead. Our system processes 18 environmental features 
+                      to predict air quality 24 hours ahead. Our system processes 17 environmental features 
                       including PM2.5, PM10, NO₂, O₃, CO, temperature, humidity, and wind patterns to deliver 
                       personalized health alerts based on your specific respiratory condition.
                     </p>
@@ -595,7 +595,7 @@ export default function Home() {
                         <div>Model Accuracy</div>
                       </div>
                       <div>
-                        <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "1.125rem" }}>18</div>
+                        <div style={{ color: "var(--accent)", fontWeight: 600, fontSize: "1.125rem" }}>17</div>
                         <div>Input Features</div>
                       </div>
                       <div>
@@ -826,7 +826,7 @@ export default function Home() {
                 },
                 {
                   icon: "⬡", label: "LSTM AI Forecast", delay: "100ms",
-                  desc: "A trained long short-term memory neural network predicts your local AQI 24 hours ahead using 18 environmental features.",
+                  desc: "A trained long short-term memory neural network predicts your local AQI 24 hours ahead using 17 environmental features.",
                 },
                 {
                   icon: "◈", label: "Personalised Alerts", delay: "200ms",
