@@ -859,15 +859,15 @@ export default function Dashboard() {
                         }}>
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Raw AQI</div>
-                            {/* Fix Bug 2: single source of truth — raw_aqi is already rounded to 1dp in backend */}
-                            <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem" }}>{prediction.risk_explanation.raw_aqi}</div>
+                            {/* FIX Bug 1: round to integer so it matches the 24h Forecast hero card */}
+                            <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem" }}>{Math.round(prediction.risk_explanation.raw_aqi)}</div>
                           </div>
                           
                           <span style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>+</span>
                           
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Cond. Shift</div>
-                            <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem", color: "var(--accent)" }}>+{prediction.risk_explanation.condition_shift}</div>
+                            <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem", color: "var(--accent)" }}>+{Math.round(prediction.risk_explanation.condition_shift)}</div>
                             {prediction.risk_explanation.severity_multiplier && prediction.risk_explanation.severity_multiplier !== 1.0 && (
                               <div style={{ fontSize: "0.5rem", color: "var(--muted-foreground)", marginTop: "0.15rem" }}>×{prediction.risk_explanation.severity_multiplier}</div>
                             )}
@@ -877,7 +877,7 @@ export default function Dashboard() {
                           
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Symp. Penalty</div>
-                            <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem", color: "var(--accent)" }}>+{prediction.risk_explanation.symptom_penalty}</div>
+                            <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem", color: "var(--accent)" }}>+{Math.round(prediction.risk_explanation.symptom_penalty)}</div>
                             {/* Fix Bug 3: Show weighted breakdown per symptom */}
                             {prediction.risk_explanation.symptom_weights && Object.keys(prediction.risk_explanation.symptom_weights).length > 0 && (
                               <div style={{ fontSize: "0.5rem", color: "var(--muted-foreground)", marginTop: "0.15rem" }}>
@@ -890,7 +890,8 @@ export default function Dashboard() {
                           
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Effective AQI</div>
-                            <div style={{ fontSize: "1.125rem", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: "0.25rem" }}>{prediction.risk_explanation.effective_aqi}</div>
+                            {/* FIX Bug 1: round effective_aqi to integer — must match raw_aqi + shifts arithmetically */}
+                            <div style={{ fontSize: "1.125rem", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: "0.25rem" }}>{Math.round(prediction.risk_explanation.effective_aqi)}</div>
                           </div>
                           
                           <span style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>→</span>
@@ -940,7 +941,8 @@ export default function Dashboard() {
                           Historically, air pollutant levels dip during these time windows today. Plan outdoor activities, errands, or window ventilation during these periods:
                         </div>
                         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                          {prediction.safe_hours.map((slot, idx) => (
+                          {/* FIX Bug 2: sort time slots chronologically before rendering */}
+                          {[...prediction.safe_hours].sort((a, b) => a.localeCompare(b)).map((slot, idx) => (
                             <div key={idx} style={{
                               display: "inline-flex",
                               alignItems: "center",
@@ -966,11 +968,13 @@ export default function Dashboard() {
                   <div className="metric-grid reveal" style={{ transitionDelay: "260ms" }}>
                     <div className="metric-item">
                       <div className="metric-lbl">Raw Model AQI</div>
-                      <div className="metric-val" style={{ fontSize: "1.5rem" }}>{prediction.predicted_aqi_raw}</div>
+                      {/* FIX Bug 1: round raw float to match rounding used everywhere else */}
+                      <div className="metric-val" style={{ fontSize: "1.5rem" }}>{Math.round(prediction.predicted_aqi_raw)}</div>
                     </div>
                     <div className="metric-item">
                       <div className="metric-lbl">Safety Buffer</div>
-                      <div className="metric-val" style={{ fontSize: "1.5rem" }}>+{prediction.rmse_buffer}</div>
+                      {/* FIX Bug 1: round buffer value consistently */}
+                      <div className="metric-val" style={{ fontSize: "1.5rem" }}>+{Math.round(prediction.rmse_buffer)}</div>
                       <div className="metric-sub">RMSE adjusted</div>
                     </div>
                     <div className="metric-item">

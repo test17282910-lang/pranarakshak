@@ -34,86 +34,93 @@ interface IndoorRecommendationsData {
 interface SmartIndoorRecommendationsProps {
   userId: string;
   currentAqi: number;
-  // FIX: Pass personalized risk tier and effective AQI from prediction
-  alertTier?: string;        // "Safe" | "Caution" | "High Risk" | "Critical"
-  effectiveAqi?: number;     // personalized effective AQI (includes condition shift + symptom penalty)
+  alertTier?: string;    // "Safe" | "Caution" | "High Risk" | "Critical"
+  effectiveAqi?: number; // personalized effective AQI (includes condition shift + symptom penalty)
 }
 
-// FIX: All indoor guidelines now evaluate personalized risk tier, NOT raw AQI
-function getPersonalizedActivityAdvice(alertTier: string, effectiveAqi: number): {
-  exercise: string; cooking: string; cleaning: string;
-} {
+// ── Personalized activity advice — driven by alert tier, NOT raw AQI ─────────
+// FIX Bug 3: when isSeverelyRestricted (Critical/High Risk), activity advice
+// never mentions windows/doors — avoids the contradictory "avoid cardio near
+// windows" message when the window card already says "seal everything".
+function getPersonalizedActivityAdvice(
+  alertTier: string,
+  effectiveAqi: number
+): { exercise: string; cooking: string; cleaning: string } {
   const tier = alertTier?.toLowerCase();
 
   if (tier === "critical" || effectiveAqi > 200) {
     return {
-      exercise: "🚫 Skip ALL workouts today — even light yoga near windows is unsafe for your condition.",
-      cooking: "🍽️ Avoid high-heat cooking. Keep kitchen sealed. Use exhaust fans at max speed.",
-      cleaning: "🧹 Do NOT vacuum or sweep — this stirs up indoor particulates. Postpone all cleaning."
+      exercise: "🚫 Skip ALL workouts today — even light yoga indoors strains your respiratory system under Critical risk.",
+      cooking:  "🍽️ Avoid high-heat cooking. Keep kitchen fully sealed. Run exhaust fan at max speed.",
+      cleaning: "🧹 Do NOT vacuum or sweep — stirring indoor particulates worsens your exposure. Postpone all cleaning.",
     };
   }
   if (tier === "high risk" || effectiveAqi > 100) {
     return {
-      exercise: "⚠️ No cardio workouts. Light stretching in a sealed room only — avoid windows.",
-      cooking: "🍳 Use lids while cooking. Run exhaust fan. Avoid frying or high-heat methods.",
-      cleaning: "🫧 Damp-wipe surfaces only. Avoid dry dusting. Postpone vacuuming if possible."
+      exercise: "⚠️ No cardio workouts. Light stretching only — stay in a sealed room away from exterior walls.",
+      cooking:  "🍳 Use lids while cooking. Run exhaust fan. Avoid frying or high-heat methods.",
+      cleaning: "🫧 Damp-wipe surfaces only. Avoid dry dusting. Postpone vacuuming if possible.",
     };
   }
   if (tier === "caution" || effectiveAqi > 50) {
     return {
-      exercise: "🏃 Light indoor exercise OK. Keep windows closed during workout.",
-      cooking: "👨‍🍳 Normal cooking fine. Open kitchen window briefly if needed.",
-      cleaning: "🧽 Regular cleaning OK. Use damp mop instead of dry broom."
+      exercise: "🏃 Light indoor exercise OK. Keep the room well-ventilated via purifier, not open windows.",
+      cooking:  "👨‍🍳 Normal cooking fine. Use exhaust fan as needed.",
+      cleaning: "🧽 Regular cleaning OK. Use a damp mop instead of a dry broom.",
     };
   }
   // Safe
   return {
     exercise: "💪 All indoor exercises safe! Great day for a full workout.",
-    cooking: "🥗 No restrictions. Cook freely — air quality is good.",
-    cleaning: "🏠 Perfect day for deep cleaning — open windows while you clean!"
+    cooking:  "🥗 No restrictions. Cook freely — air quality is good.",
+    cleaning: "🏠 Perfect day for deep cleaning — air quality supports it.",
   };
 }
 
-// FIX: Window advice also based on personalized risk, not just raw AQI
+// ── Window advice — based on personalized risk tier ───────────────────────────
 function getPersonalizedWindowAdvice(alertTier: string, currentAqi: number): IndoorRecommendation {
   const tier = alertTier?.toLowerCase();
 
   if (tier === "critical") {
     return {
-      action: "keep_closed",
-      message: "🚫 Keep ALL windows and doors sealed. Your condition makes outdoor air dangerous even at moderate AQI levels.",
-      duration: "Stay indoors until your risk tier drops to Caution or below."
+      action:   "keep_closed",
+      message:  "🚫 Keep ALL windows and doors sealed. Your condition makes outdoor air dangerous even at moderate AQI levels.",
+      duration: "Stay indoors until your risk tier drops to Caution or below.",
     };
   }
   if (tier === "high risk") {
     return {
-      action: "keep_closed",
-      message: "🔒 Keep windows closed. Outdoor AQI is above your personalized safe threshold.",
-      duration: "Ventilate only during optimal windows shown below."
+      action:   "keep_closed",
+      message:  "🔒 Keep windows closed. Outdoor AQI is above your personalized safe threshold.",
+      duration: "Ventilate only during optimal windows shown below.",
     };
   }
   if (currentAqi < 50) {
     return {
-      action: "open_windows",
-      message: "🌬️ Outdoor air is clean. Open windows for 15–30 minutes to refresh indoor air.",
-      duration: "Safe to ventilate freely."
+      action:   "open_windows",
+      message:  "🌬️ Outdoor air is clean. Open windows for 15–30 minutes to refresh indoor air.",
+      duration: "Safe to ventilate freely.",
     };
   }
   if (currentAqi < 100) {
     return {
-      action: "selective_ventilation",
-      message: "🪟 Brief ventilation OK. 5–10 minutes only — avoid prolonged exposure.",
-      duration: "Short bursts only."
+      action:   "selective_ventilation",
+      message:  "🪟 Brief ventilation OK. 5–10 minutes only — avoid prolonged exposure.",
+      duration: "Short bursts only.",
     };
   }
   return {
-    action: "keep_closed",
-    message: "🚫 Keep windows sealed. Outdoor air quality is poor.",
-    duration: "Wait for AQI to drop below 100."
+    action:   "keep_closed",
+    message:  "🚫 Keep windows sealed. Outdoor air quality is poor.",
+    duration: "Wait for AQI to drop below 100.",
   };
 }
 
-// FIX Bug 1: Filter ventilation windows using effectiveAqi threshold, not raw AQI
+// ── Ventilation windows — filtered AND chronologically sorted ─────────────────
+// FIX Bug 2: results are sorted by time string (HH:MM) before returning,
+// so the grid never renders tiles out of chronological order.
+// FIX Bug 3: Critical/High Risk returns [] so no misleading green slots appear
+// when the window card already says "seal everything".
 function getPersonalizedVentilationWindows(
   forecast: Array<{ hour: string; predicted_aqi: number; is_optimal_ventilation: boolean }>,
   alertTier: string,
@@ -122,34 +129,36 @@ function getPersonalizedVentilationWindows(
 ): string[] {
   const tier = alertTier?.toLowerCase();
 
-  // If personalized risk is Critical or High Risk, NO ventilation windows exist
-  // regardless of what the raw model forecast says
+  // No safe windows when severely restricted
   if (tier === "critical" || effectiveAqi > 200) {
-    return [];  // No safe windows — don't show misleading green slots
+    return [];
   }
   if (tier === "high risk" || effectiveAqi > 100) {
-    // Only show windows where raw AQI is genuinely low (<50) AND before 7am
-    return forecast
-      .filter(f => f.predicted_aqi < 50 && parseInt(f.hour) < 7)
-      .map(f => f.hour)
-      .slice(0, 3);
-  }
-
-  // For Safe/Caution — use standard ventilation logic
-  const optimalHours = forecast
-    .filter(f => f.predicted_aqi < 75 && f.is_optimal_ventilation)
-    .map(f => f.hour);
-
-  if (optimalHours.length === 0) {
-    // Fallback: find least-bad hours
+    // Only very early hours where raw AQI is genuinely low
     return [...forecast]
-      .sort((a, b) => a.predicted_aqi - b.predicted_aqi)
-      .slice(0, 4)
+      .filter(f => f.predicted_aqi < 50 && parseInt(f.hour) < 7)
+      .sort((a, b) => a.hour.localeCompare(b.hour)) // FIX Bug 2: sort chronologically
+      .slice(0, 3)
       .map(f => f.hour);
   }
 
-  return optimalHours.slice(0, 6);
+  // Safe / Caution — use standard ventilation logic
+  const optimalHours = forecast.filter(
+    f => f.predicted_aqi < 75 && f.is_optimal_ventilation
+  );
+
+  const source = optimalHours.length > 0
+    ? optimalHours.slice(0, 6)
+    : [...forecast].sort((a, b) => a.predicted_aqi - b.predicted_aqi).slice(0, 4);
+
+  // FIX Bug 2: always sort the final output chronologically
+  return source
+    .map(f => f.hour)
+    .sort((a, b) => a.localeCompare(b));
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
+export default function SmartIndoorRecommendations({
   userId,
   currentAqi,
   alertTier = "Safe",
@@ -159,7 +168,6 @@ function getPersonalizedVentilationWindows(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Use NEXT_PUBLIC_API_URL to match .env.local
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
@@ -170,7 +178,6 @@ function getPersonalizedVentilationWindows(
     if (!userId) return;
     setLoading(true);
     setError(null);
-
     try {
       const response = await fetch(`${API_BASE_URL}/indoor-recommendations/${userId}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -184,25 +191,17 @@ function getPersonalizedVentilationWindows(
   };
 
   const getActionIcon = (action: string) => {
-    if (action.includes("open")) return "🌬️";
-    if (action.includes("selective")) return "🪟";
+    if (action.includes("open"))                        return "🌬️";
+    if (action.includes("selective"))                   return "🪟";
     if (action.includes("closed") || action.includes("keep")) return "🚫";
-    if (action.includes("max")) return "💨";
-    if (action.includes("high")) return "🔄";
-    if (action.includes("medium")) return "⚙️";
+    if (action.includes("max"))                         return "💨";
+    if (action.includes("high"))                        return "🔄";
+    if (action.includes("medium"))                      return "⚙️";
     if (action.includes("low") || action.includes("off")) return "✨";
     return "💡";
   };
 
-  const getActionBorderColor = (action: string) => {
-    if (action.includes("open") || action.includes("low") || action.includes("off"))
-      return "oklch(0.75 0.11 162 / 0.35)";
-    if (action.includes("selective") || action.includes("medium"))
-      return "oklch(0.82 0.11 95 / 0.35)";
-    return "oklch(0.72 0.14 32 / 0.35)";
-  };
-
-  // ── Loading state ──────────────────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="glass reveal" style={{ borderRadius: "1.5rem", padding: "1.5rem", transitionDelay: "240ms" }}>
@@ -219,7 +218,7 @@ function getPersonalizedVentilationWindows(
     );
   }
 
-  // ── Error state — still show the card with retry ───────────────────────────
+  // ── Error / no data ────────────────────────────────────────────────────────
   if (error || !recommendations) {
     return (
       <div className="glass reveal" style={{ borderRadius: "1.5rem", padding: "1.5rem", transitionDelay: "240ms" }}>
@@ -229,9 +228,7 @@ function getPersonalizedVentilationWindows(
         <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
           <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🏠</div>
           <div style={{ fontSize: "0.875rem", color: "var(--muted-foreground)", marginBottom: "1.25rem" }}>
-            {error
-              ? `Could not load recommendations — ${error}`
-              : "No recommendations available yet."}
+            {error ? `Could not load recommendations — ${error}` : "No recommendations available yet."}
           </div>
           <button
             onClick={fetchRecommendations}
@@ -252,44 +249,42 @@ function getPersonalizedVentilationWindows(
     );
   }
 
-  // ── Full render — FIX: uses personalized risk tier, NOT raw AQI ──────────
-  const personalizedWindowAdvice = getPersonalizedWindowAdvice(alertTier, currentAqi);
-  const personalizedActivityAdvice = getPersonalizedActivityAdvice(alertTier, effectiveAqi ?? currentAqi);
+  // ── Derived state — single computation point (FIX Bug 1: all values rounded here) ──
+  const resolvedEffectiveAqi = effectiveAqi ?? currentAqi;
+  const tier = alertTier?.toLowerCase();
 
-  // Purifier setting still based on raw outdoor AQI (it filters outdoor air)
-  const purifierAdvice = recommendations?.recommendations?.purifier_advice ?? {
+  // FIX Bug 3: global severity flag — when true, strips intermediate warnings
+  // and replaces them with unambiguous Critical/High-Risk overrides.
+  const isSeverelyRestricted = tier === "critical" || tier === "high risk" || resolvedEffectiveAqi > 100;
+
+  const personalizedWindowAdvice  = getPersonalizedWindowAdvice(alertTier, currentAqi);
+  const personalizedActivityAdvice = getPersonalizedActivityAdvice(alertTier, resolvedEffectiveAqi);
+
+  // Purifier advice based on raw outdoor AQI (it filters outdoor air, not personalized risk)
+  const purifierAdvice = recommendations.recommendations?.purifier_advice ?? {
     setting: currentAqi > 150 ? "max_speed" : currentAqi > 100 ? "high_speed" : currentAqi > 50 ? "medium_speed" : "low_or_off",
     message: currentAqi > 150 ? "💨 Run air purifier on HIGHEST setting continuously."
            : currentAqi > 100 ? "🔄 Run air purifier on HIGH setting, especially in bedroom."
            : currentAqi > 50  ? "⚙️ Run on MEDIUM during sleep and work hours."
            : "✨ Low or off — outdoor air is clean today.",
-    runtime: currentAqi > 150 ? "24/7" : currentAqi > 100 ? "12+ hours/day" : currentAqi > 50 ? "8–10 hours/day" : "Optional"
+    runtime: currentAqi > 150 ? "24/7" : currentAqi > 100 ? "12+ hours/day" : currentAqi > 50 ? "8–10 hours/day" : "Optional",
   };
 
+  // FIX Bug 2: getPersonalizedVentilationWindows already sorts its output
   const optimalTimes = getPersonalizedVentilationWindows(
-    recommendations?.hourly_forecast ?? [],
+    recommendations.hourly_forecast ?? [],
     alertTier,
-    effectiveAqi ?? currentAqi,
+    resolvedEffectiveAqi,
     currentAqi
   );
 
-  // Tier-based border color
-  const tierBorderColor = 
-    alertTier?.toLowerCase() === "critical"  ? "oklch(0.62 0.20 18 / 0.4)"  :
-    alertTier?.toLowerCase() === "high risk" ? "oklch(0.78 0.14 36 / 0.4)"  :
-    alertTier?.toLowerCase() === "caution"   ? "oklch(0.82 0.11 78 / 0.4)"  :
-    "oklch(0.75 0.11 162 / 0.4)";
+  const tierBorderColor =
+    tier === "critical"  ? "oklch(0.62 0.20 18 / 0.4)"  :
+    tier === "high risk" ? "oklch(0.78 0.14 36 / 0.4)"  :
+    tier === "caution"   ? "oklch(0.82 0.11 78 / 0.4)"  :
+                           "oklch(0.75 0.11 162 / 0.4)";
 
-  const getActionIcon = (action: string) => {
-    if (action.includes("open")) return "🌬️";
-    if (action.includes("selective")) return "🪟";
-    if (action.includes("closed") || action.includes("keep")) return "🚫";
-    if (action.includes("max")) return "💨";
-    if (action.includes("high")) return "🔄";
-    if (action.includes("medium")) return "⚙️";
-    return "✨";
-  };
-
+  // ── Full render ────────────────────────────────────────────────────────────
   return (
     <div className="glass reveal" style={{ borderRadius: "1.5rem", padding: "1.5rem", transitionDelay: "240ms" }}>
       <div className="overline" style={{ marginBottom: "0.75rem" }}>
@@ -300,19 +295,22 @@ function getPersonalizedVentilationWindows(
       <div style={{
         padding: "0.625rem 0.875rem",
         borderRadius: "0.5rem",
-        background: `${tierBorderColor.replace("0.4", "0.08")}`,
+        background: tierBorderColor.replace("0.4", "0.08"),
         border: `1px solid ${tierBorderColor}`,
         marginBottom: "1.25rem",
         fontSize: "0.75rem",
-        lineHeight: 1.5
+        lineHeight: 1.5,
       }}>
-        <strong>Personalized for your risk tier ({alertTier})</strong> — recommendations below are based on your effective AQI of {Math.round(effectiveAqi ?? currentAqi)}, not just the outdoor reading of {Math.round(currentAqi)}.
+        {/* FIX Bug 1: effective AQI rounded here via Math.round — single display point */}
+        <strong>Personalized for your risk tier ({alertTier})</strong> — recommendations below are based on your
+        effective AQI of <strong>{Math.round(resolvedEffectiveAqi)}</strong>, not just the outdoor
+        reading of <strong>{Math.round(currentAqi)}</strong>.
       </div>
 
       {/* Window + Purifier cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
 
-        {/* Window advice — personalized */}
+        {/* Window advice */}
         <div style={{
           padding: "1rem", borderRadius: "0.75rem",
           background: "rgba(255,255,255,0.02)",
@@ -355,21 +353,48 @@ function getPersonalizedVentilationWindows(
         </div>
       </div>
 
-      {/* Activity guidelines — FIX: using personalized tier */}
+      {/* Activity guidelines
+          FIX Bug 3: isSeverelyRestricted overrides the section header so the user
+          sees an unambiguous "all activities restricted" message instead of
+          intermediate warnings that imply windows might be usable. */}
       <div style={{ marginBottom: "1.5rem" }}>
         <h4 style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           Indoor Activity Guidelines
-          <span style={{ fontSize: "0.625rem", marginLeft: "0.5rem", color: "var(--accent)", fontWeight: 400 }}>
-            (based on your {alertTier} risk level)
-          </span>
+          {isSeverelyRestricted ? (
+            <span style={{ fontSize: "0.625rem", marginLeft: "0.5rem", color: "oklch(0.72 0.14 32)", fontWeight: 500 }}>
+              ⚠ All windows/doors sealed — restrictions apply
+            </span>
+          ) : (
+            <span style={{ fontSize: "0.625rem", marginLeft: "0.5rem", color: "var(--accent)", fontWeight: 400 }}>
+              (based on your {alertTier} risk level)
+            </span>
+          )}
         </h4>
+
+        {/* FIX Bug 3: when severely restricted, show a single high-level override
+            banner BEFORE the per-activity items so there's no ambiguity */}
+        {isSeverelyRestricted && (
+          <div style={{
+            padding: "0.625rem 0.875rem",
+            borderRadius: "0.5rem",
+            background: "oklch(0.62 0.20 18 / 0.06)",
+            border: "1px solid oklch(0.62 0.20 18 / 0.3)",
+            marginBottom: "0.75rem",
+            fontSize: "0.75rem",
+            color: "oklch(0.82 0.10 18)",
+            lineHeight: 1.5,
+          }}>
+            🚫 <strong>All windows and doors must remain sealed.</strong> The per-activity guidance below reflects this — avoid any activity that requires opening windows.
+          </div>
+        )}
+
         <div style={{ display: "grid", gap: "0.5rem" }}>
           {Object.entries(personalizedActivityAdvice).map(([activity, advice]) => (
             <div key={activity} style={{
               padding: "0.75rem", borderRadius: "0.5rem",
               background: "rgba(255,255,255,0.02)",
               border: "1px solid var(--border)",
-              display: "flex", gap: "0.75rem"
+              display: "flex", gap: "0.75rem",
             }}>
               <span style={{ fontSize: "0.6875rem", fontWeight: 700, textTransform: "uppercase", color: "var(--accent)", minWidth: "60px" }}>
                 {activity}
@@ -380,7 +405,10 @@ function getPersonalizedVentilationWindows(
         </div>
       </div>
 
-      {/* Optimal ventilation windows — FIX: filtered by effectiveAqi */}
+      {/* Optimal ventilation windows
+          FIX Bug 2: optimalTimes is already sorted chronologically by getPersonalizedVentilationWindows.
+          FIX Bug 3: when isSeverelyRestricted, optimalTimes is [] so no green tiles render
+          alongside a "seal windows" message. */}
       <div style={{ marginBottom: "1.25rem" }}>
         <h4 style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           🌿 Optimal Ventilation Windows
@@ -392,14 +420,15 @@ function getPersonalizedVentilationWindows(
             background: "oklch(0.62 0.20 18 / 0.08)",
             border: "1px solid oklch(0.62 0.20 18 / 0.3)",
             fontSize: "0.75rem",
-            color: "oklch(0.82 0.10 18)"
+            color: "oklch(0.82 0.10 18)",
           }}>
             🚫 No safe ventilation windows today — your personalized risk level is too high for any outdoor air exposure. Keep all windows sealed.
           </div>
         ) : (
           <>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-              {optimalTimes.map((t: string, i: number) => (
+              {/* FIX Bug 2: already chronologically sorted — rendered in order */}
+              {optimalTimes.map((t, i) => (
                 <span key={i} style={{
                   padding: "0.25rem 0.75rem", borderRadius: "9999px",
                   background: "oklch(0.75 0.11 162 / 0.1)",
@@ -417,131 +446,6 @@ function getPersonalizedVentilationWindows(
           </>
         )}
       </div>
-
-      {/* Refresh */}
-      <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
-        <button
-          onClick={fetchRecommendations}
-          disabled={loading}
-          style={{
-            background: "rgba(255,255,255,0.05)",
-            border: "1px solid var(--border)",
-            borderRadius: "0.5rem",
-            padding: "0.4rem 1rem",
-            fontSize: "0.75rem",
-            color: "var(--foreground)",
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading ? "Updating…" : "🔄 Refresh"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-  return (
-    <div className="glass reveal" style={{ borderRadius: "1.5rem", padding: "1.5rem", transitionDelay: "240ms" }}>
-      <div className="overline" style={{ marginBottom: "0.75rem" }}>
-        <span className="overline-dash" />🏠 Smart Indoor Air Quality
-      </div>
-
-      <div style={{ fontSize: "0.75rem", color: "var(--muted-foreground)", marginBottom: "1.5rem", lineHeight: 1.5 }}>
-        AI-powered recommendations based on current outdoor AQI and 24-hour forecast.
-      </div>
-
-      {/* Window + Purifier cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
-
-        {/* Window advice */}
-        <div style={{
-          padding: "1rem", borderRadius: "0.75rem",
-          background: "rgba(255,255,255,0.02)",
-          border: `1px solid ${getActionBorderColor(window_advice.action)}`,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-            <span style={{ fontSize: "1.25rem" }}>{getActionIcon(window_advice.action)}</span>
-            <span style={{ fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Windows
-            </span>
-          </div>
-          <p style={{ fontSize: "0.75rem", lineHeight: 1.55, marginBottom: "0.35rem" }}>
-            {window_advice.message}
-          </p>
-          {window_advice.duration && (
-            <p style={{ fontSize: "0.6875rem", color: "var(--muted-foreground)" }}>
-              {window_advice.duration}
-            </p>
-          )}
-        </div>
-
-        {/* Purifier advice */}
-        <div style={{
-          padding: "1rem", borderRadius: "0.75rem",
-          background: "rgba(255,255,255,0.02)",
-          border: `1px solid ${getActionBorderColor(purifier_advice.setting)}`,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-            <span style={{ fontSize: "1.25rem" }}>{getActionIcon(purifier_advice.setting)}</span>
-            <span style={{ fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Air Purifier
-            </span>
-          </div>
-          <p style={{ fontSize: "0.75rem", lineHeight: 1.55, marginBottom: "0.35rem" }}>
-            {purifier_advice.message}
-          </p>
-          <p style={{ fontSize: "0.6875rem", color: "var(--muted-foreground)" }}>
-            Runtime: {purifier_advice.runtime}
-          </p>
-        </div>
-      </div>
-
-      {/* Activity guidelines */}
-      <div style={{ marginBottom: "1.5rem" }}>
-        <h4 style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Indoor Activity Guidelines
-        </h4>
-        <div style={{ display: "grid", gap: "0.5rem" }}>
-          {Object.entries(activity_advice).map(([activity, advice]) => (
-            <div key={activity} style={{
-              padding: "0.75rem", borderRadius: "0.5rem",
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid var(--border)",
-              display: "flex", gap: "0.75rem"
-            }}>
-              <span style={{ fontSize: "0.6875rem", fontWeight: 700, textTransform: "uppercase", color: "var(--accent)", minWidth: "60px" }}>
-                {activity}
-              </span>
-              <span style={{ fontSize: "0.75rem", lineHeight: 1.4 }}>{advice}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Optimal ventilation windows */}
-      {recommendations.optimal_ventilation_times.length > 0 && (
-        <div style={{ marginBottom: "1.25rem" }}>
-          <h4 style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            🌿 Optimal Ventilation Windows
-          </h4>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-            {recommendations.optimal_ventilation_times.map((t, i) => (
-              <span key={i} style={{
-                padding: "0.25rem 0.75rem", borderRadius: "9999px",
-                background: "oklch(0.75 0.11 162 / 0.1)",
-                border: "1px solid oklch(0.75 0.11 162 / 0.3)",
-                color: "oklch(0.75 0.11 162)",
-                fontSize: "0.75rem", fontFamily: "var(--font-mono)", fontWeight: 500,
-              }}>
-                {t}
-              </span>
-            ))}
-          </div>
-          <p style={{ fontSize: "0.6875rem", color: "var(--muted-foreground)", marginTop: "0.5rem" }}>
-            Best hours for natural ventilation based on 24h AQI forecast.
-          </p>
-        </div>
-      )}
 
       {/* Refresh */}
       <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
