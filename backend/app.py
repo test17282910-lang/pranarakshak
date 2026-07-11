@@ -180,6 +180,10 @@ class RegisterRequest(BaseModel):
     symptoms: Optional[list[str]] = Field(default=[])
     personalized_issue: Optional[str] = Field(None)
     alert_threshold: Optional[int] = Field(100, ge=50, le=500, description="Custom AQI threshold for alerts")
+    # Medication reminders
+    medications: Optional[list[dict]] = Field(default=[], description="List of medications with schedules")
+    emergency_contacts: Optional[list[dict]] = Field(default=[], description="Emergency contacts for critical alerts")
+    family_group_id: Optional[str] = Field(None, description="Family group identifier for shared alerts")
 
 
 class LoginRequest(BaseModel):

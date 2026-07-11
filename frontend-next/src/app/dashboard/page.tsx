@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import SmartIndoorRecommendations from "../../components/SmartIndoorRecommendations";
 
 interface UserProfile {
   id: string;
@@ -1033,6 +1034,9 @@ export default function Dashboard() {
                       ))}
                     </div>
                   </div>
+
+                  {/* ── NEW FEATURE: Smart Indoor Air Quality Recommendations ── */}
+                  <SmartIndoorRecommendations userId={userId!} currentAqi={predictedAqi} />
 
                   {/* ── Alert Notification Dispatch History Log ── */}
                   <div className="glass reveal" style={{ borderRadius: "1.5rem", padding: "2rem", transitionDelay: "240ms", display: "flex", flexDirection: "column" }}>
