@@ -1,366 +1,377 @@
 #!/usr/bin/env python3
 """
-accurate_aqi.py - Improved AQI Data Accuracy System
-Fetches from multiple sources and cross-validates for better accuracy.
+accurate_aqi.py - Multi-Source AQI Accuracy System
+Queries WAQI, OpenAQ, and OpenWeatherMap independently,
+then picks the best reading using distance + freshness scoring.
 """
 
 import os
 import logging
 import httpx
 import numpy as np
-from typing import Dict, Tuple, Optional
-from datetime import datetime
+from typing import Dict, Optional, Tuple
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
-WAQI_TOKEN = os.getenv("WAQI_TOKEN", "")
-WAQI_BASE = "https://api.waqi.info"
+WAQI_TOKEN  = os.getenv("WAQI_TOKEN", "").strip()
+OPENAQ_KEY  = os.getenv("X-API-Key", "").strip()
+OWM_KEY     = os.getenv("OWM_API_KEY", "").strip()
 
-def fetch_multiple_aqi_sources(lat: float, lon: float) -> Dict:
+WAQI_BASE   = "https://api.waqi.info"
+OPENAQ_BASE = "https://api.openaq.org/v3"
+OWM_BASE    = "https://api.openweathermap.org/data/2.5"
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Accurate distance in km between two GPS points."""
+    R = 6371.0
+    dlat = np.radians(lat2 - lat1)
+    dlon = np.radians(lon2 - lon1)
+    a = np.sin(dlat / 2)**2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2)**2
+    return R * 2 * np.arcsin(np.sqrt(a))
+
+
+def _pm25_to_us_aqi(pm25: float) -> float:
+    """Convert PM2.5 µg/m³ → US AQI (EPA breakpoints)."""
+    bp = [
+        (0.0,  12.0,  0,   50),
+        (12.1, 35.4,  51,  100),
+        (35.5, 55.4,  101, 150),
+        (55.5, 150.4, 151, 200),
+        (150.5,250.4, 201, 300),
+        (250.5,500.4, 301, 500),
+    ]
+    for cl, ch, il, ih in bp:
+        if cl <= pm25 <= ch:
+            return round(((ih - il) / (ch - cl)) * (pm25 - cl) + il)
+    return 500
+
+
+def _india_naqi(pm25: float, pm10: float = 0) -> float:
+    """Convert PM2.5/PM10 → India NAQI (CPCB breakpoints)."""
+    def _bp(c, bps):
+        for cl, ch, il, ih in bps:
+            if cl <= c <= ch:
+                return ((ih - il) / (ch - cl)) * (c - cl) + il
+        return 500.0
+
+    pm25_bp = [(0,30,0,50),(30,60,51,100),(60,90,101,200),
+               (90,120,201,300),(120,250,301,400),(250,500,401,500)]
+    pm10_bp = [(0,50,0,50),(50,100,51,100),(100,250,101,200),
+               (250,350,201,300),(350,430,301,400),(430,600,401,500)]
+    return max(_bp(max(0, pm25), pm25_bp), _bp(max(0, pm10), pm10_bp))
+
+
+# ─── Source 1: WAQI ──────────────────────────────────────────────────────────
+
+def _fetch_waqi(lat: float, lon: float) -> Optional[Dict]:
     """
-    Fetch AQI from multiple sources for cross-validation and accuracy.
-    Returns all available readings with reliability scores.
+    Query WAQI geo-feed. Also tries named Hyderabad stations if
+    the nearest auto-detected one is >80 km away.
     """
-    sources = {}
-    
-    # Source 1: WAQI (World Air Quality Index) - Primary source
-    try:
-        if WAQI_TOKEN:
-            url = f"{WAQI_BASE}/feed/geo:{lat};{lon}/"
-            with httpx.Client(timeout=10) as client:
-                resp = client.get(url, params={"token": WAQI_TOKEN})
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("status") == "ok":
-                        result = data["data"]
-                        station_geo = result.get("city", {}).get("geo", [])
-                        
-                        # Calculate distance to determine reliability
-                        distance_km = 0
-                        if len(station_geo) == 2:
-                            st_lat, st_lon = float(station_geo[0]), float(station_geo[1])
-                            # Haversine distance approximation
-                            distance_km = ((st_lat - lat)**2 + (st_lon - lon)**2)**0.5 * 111
-                        
-                        # Extract pollutant data
-                        iaqi = result.get("iaqi", {})
-                        pm25_val = iaqi.get("pm25", {}).get("v") if "pm25" in iaqi else None
-                        pm10_val = iaqi.get("pm10", {}).get("v") if "pm10" in iaqi else None
-                        
-                        sources["waqi"] = {
-                            "aqi": result.get("aqi"),
-                            "station_name": result.get("city", {}).get("name", "Unknown"),
-                            "distance_km": round(distance_km, 1),
-                            "coordinates": station_geo,
-                            "pm25": pm25_val,
-                            "pm10": pm10_val,
-                            "last_update": result.get("time", {}).get("s"),
-                            "reliable": distance_km < max_distance,  # More flexible for Hyderabad area
-                            "data_age_hours": 0  # Assume current
-                        }
-    except Exception as e:
-        sources["waqi_error"] = str(e)
-        logger.warning(f"WAQI fetch failed: {e}")
-    
-    # Source 2: OpenAQ for validation
-    try:
-        url = "https://api.openaq.org/v2/measurements"
-        params = {
-            "coordinates": f"{lat},{lon}",
-            "radius": 30000,  # 30km radius
-            "parameter": "pm25",
-            "limit": 5,  # Get multiple recent readings
-            "order_by": "datetime",
-            "sort": "desc"
-        }
-        with httpx.Client(timeout=15) as client:
-            resp = client.get(url, params=params)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("results"):
-                    # Take the most recent reading
-                    result = data["results"][0]
-                    pm25_val = result.get("value", 0)
-                    
-                    if pm25_val and pm25_val > 0:
-                        # Convert PM2.5 to AQI using US EPA formula (approximation)
-                        aqi_est = pm25_to_aqi(pm25_val)
-                        
-                        # Calculate data age
-                        try:
-                            update_time = datetime.fromisoformat(result.get("date", {}).get("utc", "").replace('Z', '+00:00'))
-                            age_hours = (datetime.now().replace(tzinfo=update_time.tzinfo) - update_time).total_seconds() / 3600
-                        except:
-                            age_hours = 24  # Assume old if can't parse
-                        
-                        sources["openaq"] = {
-                            "aqi": round(aqi_est),
-                            "station_name": result.get("location", "OpenAQ Station"),
-                            "distance_km": "within_30km",
-                            "pm25": pm25_val,
-                            "last_update": result.get("date", {}).get("utc"),
-                            "reliable": age_hours < 6,  # Reliable if data is <6 hours old
-                            "data_age_hours": round(age_hours, 1)
-                        }
-    except Exception as e:
-        sources["openaq_error"] = str(e)
-        logger.warning(f"OpenAQ fetch failed: {e}")
-    
-    # Source 3: PurpleAir (community sensors) - if available
-    try:
-        # PurpleAir API for community sensor data
-        url = "https://api.purpleair.com/v1/sensors"
-        headers = {"X-API-Key": os.getenv("PURPLEAIR_API_KEY", "")} if os.getenv("PURPLEAIR_API_KEY") else {}
-        
-        if headers:
-            params = {
-                "fields": "pm2.5_atm,latitude,longitude,last_seen,name",
-                "location_type": "0",  # Outdoor sensors only
-                "max_age": "3600",  # Last hour only
-                "nwlng": lon - 0.1,  # Bounding box around location
-                "nwlat": lat + 0.1,
-                "selng": lon + 0.1,
-                "selat": lat - 0.1
-            }
-            
-            with httpx.Client(timeout=10) as client:
-                resp = client.get(url, headers=headers, params=params)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    sensors = data.get("data", [])
-                    
-                    if sensors:
-                        # Find closest sensor
-                        closest_sensor = None
-                        min_distance = float('inf')
-                        
-                        for sensor in sensors:
-                            if len(sensor) >= 5:
-                                s_pm25, s_lat, s_lon, s_last_seen, s_name = sensor[:5]
-                                if s_pm25 and s_lat and s_lon:
-                                    dist = ((s_lat - lat)**2 + (s_lon - lon)**2)**0.5 * 111
-                                    if dist < min_distance:
-                                        min_distance = dist
-                                        closest_sensor = {
-                                            "pm25": s_pm25,
-                                            "aqi": round(pm25_to_aqi(s_pm25)),
-                                            "station_name": s_name or "PurpleAir Sensor",
-                                            "distance_km": round(dist, 1),
-                                            "last_seen": s_last_seen,
-                                            "reliable": dist < 10  # Very local data
-                                        }
-                        
-                        if closest_sensor:
-                            sources["purpleair"] = closest_sensor
-    except Exception as e:
-        sources["purpleair_error"] = str(e)
-    
-    return sources
-
-
-def pm25_to_aqi(pm25: float) -> float:
-    """Convert PM2.5 concentration to AQI using US EPA breakpoints."""
-    if pm25 <= 12.0:
-        return (50/12.0) * pm25
-    elif pm25 <= 35.4:
-        return ((100-51)/(35.4-12.1)) * (pm25 - 12.1) + 51
-    elif pm25 <= 55.4:
-        return ((150-101)/(55.4-35.5)) * (pm25 - 35.5) + 101
-    elif pm25 <= 150.4:
-        return ((200-151)/(150.4-55.5)) * (pm25 - 55.5) + 151
-    elif pm25 <= 250.4:
-        return ((300-201)/(250.4-150.5)) * (pm25 - 150.5) + 201
-    else:
-        return ((500-301)/(500.4-250.5)) * (pm25 - 250.5) + 301
-
-
-def get_most_accurate_aqi(sources: Dict, lat: float, lon: float) -> Tuple[float, str, Dict]:
-    """
-    Analyze multiple AQI sources and return the most accurate reading.
-    Returns (aqi_value, source_name, accuracy_info)
-    """
-    reliable_sources = []
-    accuracy_info = {
-        "total_sources": len([k for k in sources.keys() if not k.endswith("_error")]),
-        "reliable_sources": 0,
-        "source_comparison": {},
-        "selected_reason": ""
-    }
-    
-    # Collect reliable sources
-    for source_name, data in sources.items():
-        if isinstance(data, dict) and not source_name.endswith("_error"):
-            if data.get("aqi") and data.get("reliable", False):
-                reliable_sources.append({
-                    "name": source_name,
-                    "aqi": float(data["aqi"]),
-                    "distance": data.get("distance_km", 999),
-                    "station": data.get("station_name", "unknown"),
-                    "age": data.get("data_age_hours", 0)
-                })
-                
-                accuracy_info["source_comparison"][source_name] = {
-                    "aqi": data.get("aqi"),
-                    "station": data.get("station_name"),
-                    "distance": data.get("distance_km"),
-                    "reliable": data.get("reliable")
-                }
-    
-    accuracy_info["reliable_sources"] = len(reliable_sources)
-    
-    if not reliable_sources:
-        # Fallback to any available source
-        for source_name, data in sources.items():
-            if isinstance(data, dict) and data.get("aqi"):
-                accuracy_info["selected_reason"] = f"fallback_to_{source_name}"
-                return float(data["aqi"]), f"{source_name}_fallback", accuracy_info
-        
-        accuracy_info["selected_reason"] = "no_data_available"
-        return 100.0, "default_fallback", accuracy_info
-    
-    # Sort by reliability score (distance and data age)
-    def reliability_score(source):
-        dist_score = 1 / (1 + source["distance"]) if isinstance(source["distance"], (int, float)) else 0
-        age_score = 1 / (1 + source["age"])
-        return dist_score + age_score
-    
-    reliable_sources.sort(key=reliability_score, reverse=True)
-    best_source = reliable_sources[0]
-    
-    # Cross-validation if multiple sources
-    if len(reliable_sources) > 1:
-        aqis = [s["aqi"] for s in reliable_sources]
-        avg_aqi = sum(aqis) / len(aqis)
-        variance = max(aqis) - min(aqis)
-        
-        accuracy_info["variance"] = round(variance, 1)
-        
-        # If readings are very different (>20 AQI points), prefer closest/newest
-        if variance > 20:
-            accuracy_info["selected_reason"] = f"high_variance_{variance:.1f}_prefer_closest"
-            return best_source["aqi"], f"{best_source['name']}_closest", accuracy_info
-        else:
-            # Use weighted average for consistent readings
-            accuracy_info["selected_reason"] = f"low_variance_{variance:.1f}_weighted_avg"
-            weights = [reliability_score(s) for s in reliable_sources]
-            weighted_aqi = sum(s["aqi"] * w for s, w in zip(reliable_sources, weights)) / sum(weights)
-            return weighted_aqi, "multi_source_weighted", accuracy_info
-    
-    accuracy_info["selected_reason"] = f"single_best_{best_source['name']}"
-    return best_source["aqi"], best_source["name"], accuracy_info
-
-
-def get_hyderabad_stations_aqi() -> Dict:
-    """
-    Get AQI from all available Hyderabad area stations for comparison.
-    This helps find the most accurate local reading.
-    """
-    hyderabad_stations = {}
-    
     if not WAQI_TOKEN:
-        return hyderabad_stations
-    
+        logger.warning("WAQI_TOKEN not set — skipping WAQI")
+        return None
+
+    def _query_waqi(url: str, params: dict) -> Optional[Dict]:
+        try:
+            with httpx.Client(timeout=10) as c:
+                r = c.get(url, params=params)
+            if r.status_code != 200:
+                return None
+            d = r.json()
+            if d.get("status") != "ok":
+                return None
+            return d["data"]
+        except Exception as e:
+            logger.warning(f"WAQI query failed: {e}")
+            return None
+
+    # Primary: geo feed
+    result = _query_waqi(f"{WAQI_BASE}/feed/geo:{lat};{lon}/", {"token": WAQI_TOKEN})
+
+    best = None
+    candidates = []
+
+    if result:
+        aqi_val = result.get("aqi")
+        geo = result.get("city", {}).get("geo", [])
+        if aqi_val and aqi_val != "-" and len(geo) == 2:
+            dist = _haversine_km(lat, lon, float(geo[0]), float(geo[1]))
+            candidates.append({
+                "aqi": float(aqi_val),
+                "station": result.get("city", {}).get("name", "WAQI"),
+                "distance_km": round(dist, 1),
+                "pm25": result.get("iaqi", {}).get("pm25", {}).get("v"),
+                "pm10": result.get("iaqi", {}).get("pm10", {}).get("v"),
+                "source": "waqi_geo",
+            })
+
+    # Supplement: search for city-name stations (Hyderabad-specific)
+    for keyword in ["hyderabad", "ghatkesar", "secunderabad", "medchal"]:
+        try:
+            with httpx.Client(timeout=8) as c:
+                r = c.get(f"{WAQI_BASE}/search/", params={"token": WAQI_TOKEN, "keyword": keyword})
+            if r.status_code == 200 and r.json().get("status") == "ok":
+                for st in r.json().get("data", [])[:4]:
+                    uid = st.get("uid")
+                    geo = st.get("station", {}).get("geo", [])
+                    if not uid or len(geo) < 2:
+                        continue
+                    dist = _haversine_km(lat, lon, float(geo[0]), float(geo[1]))
+                    if dist > 100:          # skip far stations
+                        continue
+                    sd = _query_waqi(f"{WAQI_BASE}/feed/@{uid}/", {"token": WAQI_TOKEN})
+                    if sd:
+                        av = sd.get("aqi")
+                        if av and av != "-":
+                            candidates.append({
+                                "aqi": float(av),
+                                "station": sd.get("city", {}).get("name", keyword),
+                                "distance_km": round(dist, 1),
+                                "pm25": sd.get("iaqi", {}).get("pm25", {}).get("v"),
+                                "pm10": sd.get("iaqi", {}).get("pm10", {}).get("v"),
+                                "source": f"waqi_{keyword}",
+                            })
+        except Exception as e:
+            logger.debug(f"WAQI search '{keyword}' failed: {e}")
+
+    if not candidates:
+        return None
+
+    # Pick closest station
+    best = min(candidates, key=lambda x: x["distance_km"])
+    logger.info(f"WAQI best: {best['station']} @ {best['distance_km']}km → AQI {best['aqi']}")
+    return best
+
+
+# ─── Source 2: OpenAQ ────────────────────────────────────────────────────────
+
+def _fetch_openaq(lat: float, lon: float) -> Optional[Dict]:
+    """Query OpenAQ v3 for latest PM2.5 within 50 km."""
+    if not OPENAQ_KEY:
+        logger.warning("X-API-Key not set — skipping OpenAQ")
+        return None
+
+    headers = {"X-API-Key": OPENAQ_KEY}
     try:
-        # Search for Hyderabad stations
-        url = f"{WAQI_BASE}/search/"
-        with httpx.Client(timeout=10) as client:
-            resp = client.get(url, params={"token": WAQI_TOKEN, "keyword": "hyderabad"})
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("status") == "ok":
-                    stations = data.get("data", [])
-                    
-                    for station in stations[:5]:  # Check top 5 stations
-                        if station.get("station", {}).get("name") and station.get("uid"):
-                            station_name = station["station"]["name"]
-                            station_uid = station["uid"]
-                            
-                            # Get individual station data
-                            try:
-                                station_url = f"{WAQI_BASE}/feed/@{station_uid}/"
-                                station_resp = client.get(station_url, params={"token": WAQI_TOKEN})
-                                if station_resp.status_code == 200:
-                                    station_data = station_resp.json()
-                                    if station_data.get("status") == "ok":
-                                        result = station_data["data"]
-                                        
-                                        # Calculate distance from Ghatkesar
-                                        station_geo = result.get("city", {}).get("geo", [])
-                                        distance = 999
-                                        if len(station_geo) == 2:
-                                            st_lat, st_lon = float(station_geo[0]), float(station_geo[1])
-                                            # Distance from Ghatkesar coordinates
-                                            distance = ((st_lat - 17.5449)**2 + (st_lon - 78.6898)**2)**0.5 * 111
-                                        
-                                        aqi_val = result.get("aqi")
-                                        if aqi_val and aqi_val != "-":
-                                            hyderabad_stations[station_name] = {
-                                                "aqi": float(aqi_val),
-                                                "distance_km": round(distance, 1),
-                                                "coordinates": station_geo,
-                                                "last_update": result.get("time", {}).get("s"),
-                                                "uid": station_uid
-                                            }
-                            except Exception as e:
-                                logger.warning(f"Failed to get data for station {station_name}: {e}")
+        with httpx.Client(timeout=15) as c:
+            r = c.get(
+                f"{OPENAQ_BASE}/locations",
+                params={"coordinates": f"{lat},{lon}", "radius": 50000, "limit": 10},
+                headers=headers,
+            )
+        if r.status_code != 200:
+            logger.warning(f"OpenAQ locations HTTP {r.status_code}")
+            return None
+
+        locs = r.json().get("results", [])
+        if not locs:
+            logger.warning("OpenAQ: no locations found within 50km")
+            return None
+
+        best_pm25 = None
+        best_dist = float("inf")
+        best_station = "OpenAQ"
+        best_age_h = 999
+
+        with httpx.Client(timeout=15) as c:
+            for loc in locs[:5]:
+                loc_id = loc["id"]
+                loc_lat = loc.get("coordinates", {}).get("latitude", lat)
+                loc_lon = loc.get("coordinates", {}).get("longitude", lon)
+                dist = _haversine_km(lat, lon, loc_lat, loc_lon)
+
+                # Get latest sensor readings
+                lr = c.get(f"{OPENAQ_BASE}/locations/{loc_id}/latest", headers=headers)
+                if lr.status_code not in (200,):
+                    continue
+
+                for reading in lr.json().get("results", []):
+                    param = reading.get("parameter", {}).get("name", "").lower()
+                    if param not in ("pm25", "pm2.5"):
+                        continue
+                    val = reading.get("value")
+                    if val is None or val < 0:
+                        continue
+
+                    # Calculate data freshness
+                    try:
+                        dt_str = reading.get("datetime", {}).get("utc", "")
+                        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                        age_h = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+                    except Exception:
+                        age_h = 24
+
+                    # Prefer fresh + close data
+                    score = dist + age_h * 2   # weight age twice as much
+                    best_score = best_dist + best_age_h * 2
+
+                    if score < best_score:
+                        best_pm25 = float(val)
+                        best_dist = dist
+                        best_station = loc.get("name", "OpenAQ")
+                        best_age_h = age_h
+
+        if best_pm25 is None:
+            logger.warning("OpenAQ: no valid PM2.5 readings found")
+            return None
+
+        aqi = _pm25_to_us_aqi(best_pm25)
+        logger.info(f"OpenAQ best: {best_station} @ {best_dist:.1f}km → PM2.5={best_pm25} → AQI~{aqi}")
+        return {
+            "aqi": aqi,
+            "station": best_station,
+            "distance_km": round(best_dist, 1),
+            "pm25": best_pm25,
+            "data_age_hours": round(best_age_h, 1),
+            "source": "openaq",
+        }
+
     except Exception as e:
-        logger.warning(f"Failed to search Hyderabad stations: {e}")
-    
-    return hyderabad_stations
+        logger.error(f"OpenAQ fetch error: {e}")
+        return None
+
+
+# ─── Source 3: OpenWeatherMap ─────────────────────────────────────────────────
+
+def _fetch_owm(lat: float, lon: float) -> Optional[Dict]:
+    """Query OWM air_pollution endpoint for current PM2.5."""
+    if not OWM_KEY:
+        logger.warning("OWM_API_KEY not set — skipping OWM")
+        return None
+
+    try:
+        with httpx.Client(timeout=10) as c:
+            r = c.get(
+                f"{OWM_BASE}/air_pollution",
+                params={"lat": lat, "lon": lon, "appid": OWM_KEY},
+            )
+        if r.status_code != 200:
+            logger.warning(f"OWM HTTP {r.status_code}")
+            return None
+
+        items = r.json().get("list", [])
+        if not items:
+            return None
+
+        comp   = items[0].get("components", {})
+        pm25   = comp.get("pm2_5", 0) or 0
+        pm10   = comp.get("pm10",  0) or 0
+        ts_raw = items[0].get("dt", 0)
+
+        age_h = (datetime.now(timezone.utc).timestamp() - ts_raw) / 3600
+
+        # Convert to India NAQI (OWM coords match exactly — distance=0)
+        aqi = _india_naqi(pm25, pm10)
+        logger.info(f"OWM: PM2.5={pm25:.1f} PM10={pm10:.1f} → India AQI={aqi:.0f} (age {age_h:.1f}h)")
+        return {
+            "aqi": round(aqi),
+            "station": "OpenWeatherMap (exact coords)",
+            "distance_km": 0,
+            "pm25": pm25,
+            "pm10": pm10,
+            "data_age_hours": round(age_h, 1),
+            "source": "owm",
+        }
+
+    except Exception as e:
+        logger.error(f"OWM fetch error: {e}")
+        return None
+
+
+# ─── Aggregator ───────────────────────────────────────────────────────────────
+
+def _reliability_score(entry: Dict) -> float:
+    """
+    Higher score = more reliable.
+    Penalises distance and data age.
+    """
+    dist = entry.get("distance_km", 50)
+    if not isinstance(dist, (int, float)):
+        dist = 50
+    age  = entry.get("data_age_hours", 1)
+    # Score = 1 / (1 + dist_penalty + age_penalty)
+    return 1.0 / (1.0 + dist / 10.0 + age / 2.0)
 
 
 def get_accurate_current_aqi(lat: float, lon: float) -> Tuple[float, Dict]:
     """
-    Main function to get the most accurate current AQI with full transparency.
-    Returns (aqi_value, full_accuracy_report)
+    Fetch from all 3 sources, score each, then either:
+    - Return a weighted average when readings agree (variance < 25 AQI)
+    - Return the highest-scoring individual reading otherwise.
+
+    Returns (aqi_value, report_dict)
     """
-    logger.info(f"🎯 Fetching accurate AQI for ({lat:.4f}, {lon:.4f})")
-    
-    # For Hyderabad area, get specific local stations
-    hyderabad_stations = {}
-    is_hyderabad_area = (17.2 <= lat <= 17.7) and (78.2 <= lon <= 78.9)
-    
-    if is_hyderabad_area:
-        logger.info("🏙️ Detected Hyderabad area - fetching local stations")
-        hyderabad_stations = get_hyderabad_stations_aqi()
-    
-    # Fetch from all sources
-    sources = fetch_multiple_aqi_sources(lat, lon)
-    
-    # Add Hyderabad stations to sources if available
-    if hyderabad_stations:
-        # Find closest Hyderabad station
-        closest_hyd_station = min(hyderabad_stations.items(), key=lambda x: x[1]["distance_km"])
-        station_name, station_data = closest_hyd_station
-        
-        logger.info(f"🏙️ Closest Hyderabad station: {station_name} ({station_data['distance_km']}km) = AQI {station_data['aqi']}")
-        
-        sources["hyderabad_local"] = {
-            "aqi": station_data["aqi"],
-            "station_name": station_name,
-            "distance_km": station_data["distance_km"],
-            "coordinates": station_data["coordinates"],
-            "reliable": station_data["distance_km"] < 50,  # Hyderabad area threshold
-            "data_age_hours": 0  # Assume current
-        }
-    
-    # Get most accurate reading
-    aqi_value, source_name, accuracy_info = get_most_accurate_aqi(sources, lat, lon)
-    
-    # Build comprehensive accuracy report
-    accuracy_report = {
-        "final_aqi": round(aqi_value, 1),
-        "selected_source": source_name,
+    logger.info(f"🎯 Multi-source AQI fetch for ({lat:.4f}, {lon:.4f})")
+
+    waqi_data   = _fetch_waqi(lat, lon)
+    openaq_data = _fetch_openaq(lat, lon)
+    owm_data    = _fetch_owm(lat, lon)
+
+    # Collect all available readings
+    readings = []
+    for d in [waqi_data, openaq_data, owm_data]:
+        if d and d.get("aqi") and float(d["aqi"]) > 0:
+            d["score"] = _reliability_score(d)
+            readings.append(d)
+
+    report = {
+        "sources": {
+            "waqi":   waqi_data,
+            "openaq": openaq_data,
+            "owm":    owm_data,
+        },
+        "readings_available": len(readings),
         "coordinates": {"lat": lat, "lon": lon},
-        "accuracy_info": accuracy_info,
-        "all_sources": sources,
-        "hyderabad_stations": hyderabad_stations if hyderabad_stations else None,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    
-    # Log summary
-    reliable_count = accuracy_info.get("reliable_sources", 0)
-    total_count = accuracy_info.get("total_sources", 0)
-    logger.info(f"🎯 Selected AQI: {aqi_value:.1f} from {source_name} ({reliable_count}/{total_count} sources reliable)")
-    
-    return aqi_value, accuracy_report
+
+    if not readings:
+        logger.warning("All 3 AQI sources failed — returning default 100")
+        report["selected_source"] = "fallback"
+        report["final_aqi"] = 100
+        return 100.0, report
+
+    # Sort by score
+    readings.sort(key=lambda x: x["score"], reverse=True)
+    best = readings[0]
+
+    if len(readings) == 1:
+        final_aqi = best["aqi"]
+        report["selected_source"] = best["source"]
+        report["method"] = "single_source"
+        logger.info(f"✅ Single source: {best['source']} → AQI {final_aqi}")
+
+    else:
+        aqis     = [r["aqi"] for r in readings]
+        variance = max(aqis) - min(aqis)
+        report["variance"] = round(variance, 1)
+        report["all_readings"] = [(r["source"], r["aqi"], round(r["score"], 3)) for r in readings]
+
+        if variance <= 25:
+            # Readings agree — take weighted average
+            total_w = sum(r["score"] for r in readings)
+            final_aqi = sum(r["aqi"] * r["score"] for r in readings) / total_w
+            report["selected_source"] = "weighted_average"
+            report["method"] = f"weighted_avg (variance={variance:.0f})"
+            logger.info(f"✅ Weighted avg of {[r['source'] for r in readings]}: AQI {final_aqi:.1f}")
+        else:
+            # High variance — trust the closest/freshest (best score)
+            final_aqi = best["aqi"]
+            report["selected_source"] = best["source"]
+            report["method"] = f"best_score (high variance={variance:.0f})"
+            logger.info(f"⚠️  High variance {variance:.0f} — using best-scored: {best['source']} → AQI {final_aqi}")
+
+    final_aqi = round(final_aqi, 1)
+    report["final_aqi"] = final_aqi
+    report["accuracy_info"] = {
+        "reliable_sources": len(readings),
+        "total_sources": 3,
+        "method": report.get("method", ""),
+    }
+
+    return final_aqi, report
