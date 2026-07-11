@@ -348,26 +348,41 @@ def classify_aqi(
     severity = (severity or "moderate").strip().lower()
     clean_symptoms = [s.strip() for s in (symptoms or []) if s and s.strip()]
 
-    # Compute penalties — NON-LINEAR scaling to prevent panic at low AQI
-    # and ensure meaningful impact at high AQI
-    # At AQI < 50: penalties reduced (no point adding +37 to AQI of 15)
-    # At AQI 50-150: full penalty applies
-    # At AQI > 150: penalties scale up (already severe, more vulnerable)
-    if aqi <= 50:
-        severity_multiplier = 0.5   # Dampen penalties at low baseline
-    elif aqi <= 100:
-        severity_multiplier = 1.0   # Full penalty at moderate levels
-    elif aqi <= 200:
-        severity_multiplier = 1.5   # Amplify at high levels — more vulnerable
-    else:
-        severity_multiplier = 2.0   # Max amplification at severe levels
+    # ── Fix 3: Weighted symptom penalties — clinical severity mapping ────────
+    # ShortnsessOfBreath is an emergency indicator (+12), NighttimeSymptoms is chronic (+4)
+    # Flat equal weighting was medically incorrect
+    SYMPTOM_WEIGHTS = {
+        "shortnessofbreath":    12,  # Emergency — immediate airway compromise
+        "shortness of breath":  12,
+        "chesttightness":       10,  # High — bronchospasm indicator
+        "chest tightness":      10,
+        "wheezing":              8,  # Moderate-high — audible obstruction
+        "coughing":              5,  # Moderate — irritation/inflammation
+        "cough":                 5,
+        "nighttimesymptoms":     4,  # Chronic maintenance indicator
+        "nighttime symptoms":    4,
+        "exerciseinduced":       6,  # Moderate — exertion-triggered
+        "exercise induced":      6,
+    }
 
-    raw_symptom_penalty = len(clean_symptoms) * 4
+    raw_symptom_penalty = sum(
+        SYMPTOM_WEIGHTS.get(s.lower().strip().replace(" ", ""), 4)
+        for s in clean_symptoms
+    )
+
+    # ── Non-linear multiplier (Bug 1 fix retained) ────────────────────────
+    if aqi <= 50:
+        severity_multiplier = 0.5
+    elif aqi <= 100:
+        severity_multiplier = 1.0
+    elif aqi <= 200:
+        severity_multiplier = 1.5
+    else:
+        severity_multiplier = 2.0
+
     symptom_penalty = round(raw_symptom_penalty * severity_multiplier)
     effective_aqi = aqi + symptom_penalty
     shift = get_condition_shift(condition, severity)
-    
-    # Apply same non-linear multiplier to condition shift
     scaled_shift = round(shift * severity_multiplier)
 
     # ── Option A: XGBoost Clinical Classifier ──────────────────────────────────
@@ -454,8 +469,13 @@ def classify_aqi(
         )
 
     # ── Risk Explanation ──────────────────────────────────────────────────────
+    # ── Fix 2: Consistent rounding — use ONE canonical float throughout ──────
+    # aqi comes in as a float. Pin it to 1 decimal for all internal calculations.
+    # The raw display value and the formula box must reference the SAME source.
+    aqi = round(float(aqi), 1)
+
     risk_explanation = {
-        "raw_aqi": round(aqi, 1),
+        "raw_aqi": aqi,                                   # Single source of truth
         "condition": condition,
         "severity": severity,
         "condition_shift": scaled_shift,
@@ -464,7 +484,12 @@ def classify_aqi(
         "effective_aqi": round(effective_aqi + scaled_shift, 1),
         "threshold_crossed": threshold_crossed,
         "method": method,
-        "why_be_careful": why_be_careful
+        "why_be_careful": why_be_careful,
+        "severity_multiplier": severity_multiplier,       # Expose so frontend can show it
+        "symptom_weights": {                              # Show per-symptom weights for transparency
+            s: SYMPTOM_WEIGHTS.get(s.lower().strip().replace(" ", ""), 4)
+            for s in clean_symptoms
+        }
     }
 
     # ═══════════════════════════════════════════════════════════════════════════

@@ -33,6 +33,8 @@ interface RiskExplanation {
   threshold_crossed: string;
   method: string;
   why_be_careful?: string;
+  severity_multiplier?: number;
+  symptom_weights?: Record<string, number>;
 }
 
 interface PredictionData {
@@ -857,6 +859,7 @@ export default function Dashboard() {
                         }}>
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Raw AQI</div>
+                            {/* Fix Bug 2: single source of truth — raw_aqi is already rounded to 1dp in backend */}
                             <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem" }}>{prediction.risk_explanation.raw_aqi}</div>
                           </div>
                           
@@ -865,6 +868,9 @@ export default function Dashboard() {
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Cond. Shift</div>
                             <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem", color: "var(--accent)" }}>+{prediction.risk_explanation.condition_shift}</div>
+                            {prediction.risk_explanation.severity_multiplier && prediction.risk_explanation.severity_multiplier !== 1.0 && (
+                              <div style={{ fontSize: "0.5rem", color: "var(--muted-foreground)", marginTop: "0.15rem" }}>×{prediction.risk_explanation.severity_multiplier}</div>
+                            )}
                           </div>
                           
                           <span style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>+</span>
@@ -872,6 +878,12 @@ export default function Dashboard() {
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: "0.625rem", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Symp. Penalty</div>
                             <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--font-mono)", marginTop: "0.25rem", color: "var(--accent)" }}>+{prediction.risk_explanation.symptom_penalty}</div>
+                            {/* Fix Bug 3: Show weighted breakdown per symptom */}
+                            {prediction.risk_explanation.symptom_weights && Object.keys(prediction.risk_explanation.symptom_weights).length > 0 && (
+                              <div style={{ fontSize: "0.5rem", color: "var(--muted-foreground)", marginTop: "0.15rem" }}>
+                                {Object.entries(prediction.risk_explanation.symptom_weights).map(([s, w]) => `${s.slice(0,4)}:+${w}`).join(" ")}
+                              </div>
+                            )}
                           </div>
                           
                           <span style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>=</span>
@@ -897,7 +909,7 @@ export default function Dashboard() {
 
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.6875rem", color: "var(--muted-foreground)" }}>
                           <span>Engineered via: <strong style={{ textTransform: "uppercase" }}>{prediction.risk_explanation.method}</strong></span>
-                          <span>Symptoms counted: {prediction.risk_explanation.symptom_count}</span>
+                          <span>Symptoms: {prediction.risk_explanation.symptom_count} · Multiplier: ×{prediction.risk_explanation.severity_multiplier ?? 1.0}</span>
                         </div>
 
                         {prediction.risk_explanation.why_be_careful && (

@@ -113,7 +113,43 @@ function getPersonalizedWindowAdvice(alertTier: string, currentAqi: number): Ind
   };
 }
 
-export default function SmartIndoorRecommendations({
+// FIX Bug 1: Filter ventilation windows using effectiveAqi threshold, not raw AQI
+function getPersonalizedVentilationWindows(
+  forecast: Array<{ hour: string; predicted_aqi: number; is_optimal_ventilation: boolean }>,
+  alertTier: string,
+  effectiveAqi: number,
+  currentAqi: number
+): string[] {
+  const tier = alertTier?.toLowerCase();
+
+  // If personalized risk is Critical or High Risk, NO ventilation windows exist
+  // regardless of what the raw model forecast says
+  if (tier === "critical" || effectiveAqi > 200) {
+    return [];  // No safe windows — don't show misleading green slots
+  }
+  if (tier === "high risk" || effectiveAqi > 100) {
+    // Only show windows where raw AQI is genuinely low (<50) AND before 7am
+    return forecast
+      .filter(f => f.predicted_aqi < 50 && parseInt(f.hour) < 7)
+      .map(f => f.hour)
+      .slice(0, 3);
+  }
+
+  // For Safe/Caution — use standard ventilation logic
+  const optimalHours = forecast
+    .filter(f => f.predicted_aqi < 75 && f.is_optimal_ventilation)
+    .map(f => f.hour);
+
+  if (optimalHours.length === 0) {
+    // Fallback: find least-bad hours
+    return [...forecast]
+      .sort((a, b) => a.predicted_aqi - b.predicted_aqi)
+      .slice(0, 4)
+      .map(f => f.hour);
+  }
+
+  return optimalHours.slice(0, 6);
+}
   userId,
   currentAqi,
   alertTier = "Safe",
@@ -230,7 +266,12 @@ export default function SmartIndoorRecommendations({
     runtime: currentAqi > 150 ? "24/7" : currentAqi > 100 ? "12+ hours/day" : currentAqi > 50 ? "8–10 hours/day" : "Optional"
   };
 
-  const optimalTimes = recommendations?.optimal_ventilation_times ?? [];
+  const optimalTimes = getPersonalizedVentilationWindows(
+    recommendations?.hourly_forecast ?? [],
+    alertTier,
+    effectiveAqi ?? currentAqi,
+    currentAqi
+  );
 
   // Tier-based border color
   const tierBorderColor = 
@@ -339,30 +380,43 @@ export default function SmartIndoorRecommendations({
         </div>
       </div>
 
-      {/* Optimal ventilation windows */}
-      {optimalTimes.length > 0 && (
-        <div style={{ marginBottom: "1.25rem" }}>
-          <h4 style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            🌿 Optimal Ventilation Windows
-          </h4>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-            {optimalTimes.map((t: string, i: number) => (
-              <span key={i} style={{
-                padding: "0.25rem 0.75rem", borderRadius: "9999px",
-                background: "oklch(0.75 0.11 162 / 0.1)",
-                border: "1px solid oklch(0.75 0.11 162 / 0.3)",
-                color: "oklch(0.75 0.11 162)",
-                fontSize: "0.75rem", fontFamily: "var(--font-mono)", fontWeight: 500,
-              }}>
-                {t}
-              </span>
-            ))}
+      {/* Optimal ventilation windows — FIX: filtered by effectiveAqi */}
+      <div style={{ marginBottom: "1.25rem" }}>
+        <h4 style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          🌿 Optimal Ventilation Windows
+        </h4>
+        {optimalTimes.length === 0 ? (
+          <div style={{
+            padding: "0.75rem 1rem",
+            borderRadius: "0.5rem",
+            background: "oklch(0.62 0.20 18 / 0.08)",
+            border: "1px solid oklch(0.62 0.20 18 / 0.3)",
+            fontSize: "0.75rem",
+            color: "oklch(0.82 0.10 18)"
+          }}>
+            🚫 No safe ventilation windows today — your personalized risk level is too high for any outdoor air exposure. Keep all windows sealed.
           </div>
-          <p style={{ fontSize: "0.6875rem", color: "var(--muted-foreground)", marginTop: "0.5rem" }}>
-            Best hours for natural ventilation based on 24h AQI forecast.
-          </p>
-        </div>
-      )}
+        ) : (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              {optimalTimes.map((t: string, i: number) => (
+                <span key={i} style={{
+                  padding: "0.25rem 0.75rem", borderRadius: "9999px",
+                  background: "oklch(0.75 0.11 162 / 0.1)",
+                  border: "1px solid oklch(0.75 0.11 162 / 0.3)",
+                  color: "oklch(0.75 0.11 162)",
+                  fontSize: "0.75rem", fontFamily: "var(--font-mono)", fontWeight: 500,
+                }}>
+                  {t}
+                </span>
+              ))}
+            </div>
+            <p style={{ fontSize: "0.6875rem", color: "var(--muted-foreground)", marginTop: "0.5rem" }}>
+              Hours where outdoor AQI is low enough for your risk level. Open windows briefly during these slots only.
+            </p>
+          </>
+        )}
+      </div>
 
       {/* Refresh */}
       <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--border)" }}>
