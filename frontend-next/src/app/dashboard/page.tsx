@@ -575,6 +575,60 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* Feature Navigation Bar */}
+      {profile && (
+        <div style={{
+          background: "rgba(18, 18, 18, 0.6)",
+          backdropFilter: "blur(20px)",
+          borderBottom: "1px solid rgba(242, 240, 232, 0.08)",
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          padding: "1rem 0"
+        }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 2rem" }}>
+            <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
+              <Link 
+                href="/medications"
+                className="btn-secondary"
+                style={{
+                  fontSize: "0.875rem",
+                  whiteSpace: "nowrap",
+                  background: "rgba(59, 130, 246, 0.1)",
+                  border: "1px solid rgba(59, 130, 246, 0.2)"
+                }}
+              >
+                💊 Medications
+              </Link>
+              <Link 
+                href="/family-groups"
+                className="btn-secondary"
+                style={{
+                  fontSize: "0.875rem",
+                  whiteSpace: "nowrap",
+                  background: "rgba(168, 85, 247, 0.1)",
+                  border: "1px solid rgba(168, 85, 247, 0.2)"
+                }}
+              >
+                👨‍👩‍👧‍👦 Family Groups
+              </Link>
+              <Link 
+                href="/emergency-contacts"
+                className="btn-secondary"
+                style={{
+                  fontSize: "0.875rem",
+                  whiteSpace: "nowrap",
+                  background: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.2)"
+                }}
+              >
+                🚨 Emergency Contacts
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="dashboard-wrap" style={{ position: "relative", zIndex: 1 }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 2rem" }}>
 
